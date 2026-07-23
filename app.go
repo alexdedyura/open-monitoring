@@ -165,6 +165,12 @@ func (a *App) GetHistory(seconds int) []metrics.Sample {
 	return a.col.History(seconds)
 }
 
+// GetDiskHealth returns physical drives with WMI status and, when the LHM
+// bridge runs elevated, SMART temperature / remaining life.
+func (a *App) GetDiskHealth() []metrics.DiskHealthView {
+	return a.col.DiskHealth()
+}
+
 func (a *App) StartRecording(name string) (RecStatus, error) {
 	a.recMu.Lock()
 	defer a.recMu.Unlock()

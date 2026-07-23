@@ -1,10 +1,21 @@
 <script>
-  import {live, saveConfig} from './state.svelte.js'
+  import {live, saveConfig, api} from './state.svelte.js'
   import {METRICS} from './metricDefs.js'
   import {BrowserOpenURL} from '../../wailsjs/runtime/runtime.js'
+  import SystemPanel from './SystemPanel.svelte'
+  import {onMount} from 'svelte'
 
   let cfg = $state(structuredClone($state.snapshot(live.cfg)))
   let saved = $state(false)
+  let disks = $state([])
+
+  onMount(async () => {
+    try {
+      disks = (await api.GetDiskHealth()) ?? []
+    } catch {
+      disks = []
+    }
+  })
 
   const enabled = $derived(cfg.hud.metrics)
   const available = $derived(Object.keys(METRICS).filter((k) => !cfg.hud.metrics.includes(k)))
@@ -30,7 +41,6 @@
     setTimeout(() => (saved = false), 2500)
   }
 
-  const gb = (v) => (v / 2 ** 30).toFixed(1)
 </script>
 
 <div class="grid grid-cols-1 gap-3 p-4 xl:grid-cols-2">
@@ -66,48 +76,33 @@
 
     <div class="space-y-1.5">
       <div class="flex items-center justify-between gap-4">
-        <span class="text-sm text-ink2">LibreHardwareMonitor URL</span>
-        {#if live.info?.lhmConnected}
-          <span class="font-mono text-[11px] text-ram">● connected</span>
+        <span class="text-sm text-ink2">Sensor engine</span>
+        {#if live.info?.lhmMode === 'bridge' && live.info?.lhmConnected}
+          <span class="font-mono text-[11px] text-ram">● embedded (lhm-bridge)</span>
+        {:else if live.info?.lhmMode === 'http' && live.info?.lhmConnected}
+          <span class="font-mono text-[11px] text-ram">● external LHM (HTTP)</span>
         {:else}
-          <span class="font-mono text-[11px] text-mut">○ not detected</span>
+          <span class="font-mono text-[11px] text-mut">○ starting…</span>
         {/if}
       </div>
       <input
         class="w-full rounded-md border border-line bg-card2 px-2.5 py-1.5 font-mono text-xs text-ink focus:border-ink2 focus:outline-none"
         bind:value={cfg.lhmUrl}
+        title="Fallback URL of an external LibreHardwareMonitor web server"
       />
       <p class="text-xs leading-relaxed text-mut">
-        CPU temperature, package power and clocks come from
+        Sensors run on an embedded
         <button class="underline hover:text-ink2" onclick={() => BrowserOpenURL('https://github.com/LibreHardwareMonitor/LibreHardwareMonitor')}>LibreHardwareMonitor</button>
-        — run it with Options → Remote Web Server enabled. Works without it; those rows just show “—”.
-        URL changes apply after app restart.
+        engine (lhm-bridge.exe, spawned automatically). The URL above is only a
+        fallback to an external LHM instance if the bridge binary is missing.
+        Run the app <span class="text-ink2">as administrator</span> to unlock CPU
+        temperature, package power and drive SMART data.
       </p>
     </div>
   </div>
 
-  <!-- system info -->
-  <div class="space-y-2 rounded-lg border border-line bg-card p-4">
-    <h2 class="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-mut">System</h2>
-    {#if live.info}
-      {#each [
-        ['CPU', `${live.info.cpuModel} · ${live.info.cpuThreads} threads`],
-        ['GPU', live.info.gpuName || 'not detected'],
-        ['RAM', `${gb(live.info.ramTotal)} GB`],
-        ['Disks', live.info.disks?.join('  ') ?? ''],
-        ['OS', live.info.os],
-        ['GPU source', live.info.nvidiaSmi ? 'nvidia-smi (streaming)' : live.info.lhmConnected ? 'LibreHardwareMonitor' : 'none'],
-      ] as [k, v] (k)}
-        <div class="flex gap-3 text-sm">
-          <span class="w-24 shrink-0 font-mono text-[11px] leading-6 text-mut">{k}</span>
-          <span class="min-w-0 break-words text-ink2">{v}</span>
-        </div>
-      {/each}
-    {/if}
-  </div>
-
   <!-- HUD -->
-  <div class="space-y-4 rounded-lg border border-line bg-card p-4 xl:col-span-2">
+  <div class="space-y-4 rounded-lg border border-line bg-card p-4">
     <h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-mut">HUD overlay</h2>
 
     <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -154,6 +149,12 @@
         </p>
       </div>
     </div>
+  </div>
+
+  <!-- system info -->
+  <div class="space-y-3 rounded-lg border border-line bg-card p-4 xl:col-span-2">
+    <h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-mut">System</h2>
+    <SystemPanel {disks} />
   </div>
 
   <div class="flex items-center gap-3 xl:col-span-2">

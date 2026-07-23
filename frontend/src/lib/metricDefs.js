@@ -2,16 +2,38 @@
 // entity color and how to read it out of a Sample. Used by the HUD, the HUD
 // settings editor and the stat tiles.
 
-export const COLORS = {
-  cpu: '#3987e5',
-  gpu: '#d95926',
-  ram: '#199e70',
-  vram: '#c98500',
-  diskR: '#9085e9',
-  diskW: '#e66767',
-  netD: '#008300',
-  netU: '#d55181',
+// Entity colors — validated categorical palette (dataviz skill), one set per
+// theme. Chart pairs within one chart are adjacent validated slots.
+export const PALETTES = {
+  dark: {
+    cpu: '#3987e5',
+    gpu: '#d95926',
+    ram: '#199e70',
+    vram: '#c98500',
+    diskR: '#9085e9',
+    diskW: '#e66767',
+    netD: '#008300',
+    netU: '#d55181',
+  },
+  light: {
+    cpu: '#2a78d6',
+    gpu: '#eb6834',
+    ram: '#1baf7a',
+    vram: '#eda100',
+    diskR: '#4a3aa7',
+    diskW: '#e34948',
+    netD: '#008300',
+    netU: '#e87ba4',
+  },
 }
+
+export function palette(theme) {
+  return PALETTES[theme] ?? PALETTES.dark
+}
+
+// The HUD overlay is always dark (it sits over games), so METRICS use the
+// dark set regardless of app theme.
+export const COLORS = PALETTES.dark
 
 const f0 = (v) => (v == null ? '—' : v.toFixed(0))
 const f1 = (v) => (v == null ? '—' : v.toFixed(1))

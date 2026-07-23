@@ -27,6 +27,7 @@ type LHMReading struct {
 	CPUClock float64
 	GPUName  string
 	GPU      *GPUMetrics // fallback for non-NVIDIA GPUs
+	Storage  []StorageHealth
 }
 
 type lhmNode struct {
@@ -83,7 +84,7 @@ func (l *LHMSource) fetch(client *http.Client) *LHMReading {
 	}
 	r := &LHMReading{}
 	walkChips(&root, r)
-	if r.CPUTemp == 0 && r.CPUPower == 0 && r.GPU == nil {
+	if r.CPUTemp == 0 && r.CPUPower == 0 && r.GPU == nil && len(r.Storage) == 0 {
 		return nil
 	}
 	return r
@@ -98,6 +99,8 @@ func walkChips(n *lhmNode, r *LHMReading) {
 		parseCPUChip(n, r)
 	case strings.Contains(icon, "nvidia.png"), strings.Contains(icon, "ati.png"), strings.Contains(icon, "amd.png"), strings.Contains(icon, "intel.png"):
 		parseGPUChip(n, r)
+	case strings.Contains(icon, "hdd.png"):
+		parseStorageChip(n, r)
 	}
 	for i := range n.Children {
 		walkChips(&n.Children[i], r)
@@ -153,6 +156,28 @@ func parseGPUChip(chip *lhmNode, r *LHMReading) {
 	if g.Usage > 0 || g.TempC > 0 {
 		r.GPUName = chip.Text
 		r.GPU = g
+	}
+}
+
+func parseStorageChip(chip *lhmNode, r *LHMReading) {
+	sh := StorageHealth{Name: chip.Text}
+	for i := range chip.Children {
+		group := &chip.Children[i]
+		switch group.Text {
+		case "Temperatures":
+			sh.TempC = pickSensor(group, []string{"Temperature"})
+		case "Levels":
+			if v := pickSensor(group, []string{"Remaining Life"}); v > 0 {
+				sh.LifePercent = v
+			} else if v := pickSensor(group, []string{"Percentage Used"}); v > 0 {
+				sh.LifePercent = 100 - v
+			}
+		case "Data":
+			sh.DataWrittenGB = pickSensor(group, []string{"Data Written"})
+		}
+	}
+	if sh.TempC > 0 || sh.LifePercent > 0 || sh.DataWrittenGB > 0 {
+		r.Storage = append(r.Storage, sh)
 	}
 }
 

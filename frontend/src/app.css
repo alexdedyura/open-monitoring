@@ -24,6 +24,30 @@
   --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
 }
 
+/* Light theme: same token names, light values (charts re-resolve via JS). */
+:root[data-theme="light"] {
+  --color-page: #eef1f5;
+  --color-card: #ffffff;
+  --color-card2: #e7ebf0;
+  --color-line: rgba(15, 23, 42, 0.10);
+  --color-ink: #16191e;
+  --color-ink2: #4b5563;
+  --color-mut: #8a94a0;
+
+  --color-cpu: #2a78d6;
+  --color-gpu: #eb6834;
+  --color-ram: #1baf7a;
+  --color-vram: #eda100;
+  --color-diskr: #4a3aa7;
+  --color-diskw: #e34948;
+  --color-netd: #008300;
+  --color-netu: #e87ba4;
+}
+
+:root[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.2);
+}
+
 html, body, #app {
   height: 100%;
 }

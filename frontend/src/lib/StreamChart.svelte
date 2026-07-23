@@ -5,7 +5,7 @@
   import {makeOpts} from './uplotOpts.js'
 
   // series: [{key, label, color, digits?, fill?}]
-  let {title, unit = '', series = [], yMax = null, height = 170} = $props()
+  let {title, unit = '', series = [], yMax = null, height = 170, theme = 'dark'} = $props()
 
   let el
   let plot
@@ -20,7 +20,7 @@
   }
 
   onMount(() => {
-    plot = new uPlot(makeOpts({width: el.clientWidth || 600, height, series, yMax, unit}), data(), el)
+    plot = new uPlot(makeOpts({width: el.clientWidth || 600, height, series, yMax, unit, theme}), data(), el)
     const ro = new ResizeObserver(() => {
       if (el.clientWidth) plot.setSize({width: el.clientWidth, height})
     })

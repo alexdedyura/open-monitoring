@@ -1,13 +1,14 @@
 <script>
   import {onMount} from 'svelte'
-  import {api} from './state.svelte.js'
-  import {CHARTS, buildBuffers} from './chartDefs.js'
+  import {api, live} from './state.svelte.js'
+  import {CHARTS, buildBuffers, resolveSeries} from './chartDefs.js'
   import StaticChart from './StaticChart.svelte'
 
   let {session, onback, onexport} = $props()
 
   let bufs = $state(null)
   let error = $state('')
+  const theme = $derived(live.cfg?.theme ?? 'dark')
 
   onMount(async () => {
     try {
@@ -48,17 +49,20 @@
   {:else if !bufs}
     <div class="flex h-40 items-center justify-center font-mono text-sm text-mut">Loading…</div>
   {:else}
-    <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      {#each CHARTS as c (c.title)}
-        <StaticChart
-          title={c.title}
-          unit={c.unit}
-          series={c.series}
-          yMax={c.yMax ?? null}
-          data={[bufs.t, ...c.series.map((sd) => bufs[sd.key])]}
-          height={200}
-        />
-      {/each}
-    </div>
+    {#key theme}
+      <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {#each CHARTS as c (c.title)}
+          <StaticChart
+            title={c.title}
+            unit={c.unit}
+            series={resolveSeries(c.series, theme)}
+            yMax={c.yMax ?? null}
+            data={[bufs.t, ...c.series.map((sd) => bufs[sd.key])]}
+            height={200}
+            {theme}
+          />
+        {/each}
+      </div>
+    {/key}
   {/if}
 </div>

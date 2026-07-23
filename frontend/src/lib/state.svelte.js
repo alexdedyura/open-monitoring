@@ -89,6 +89,13 @@ export async function saveConfig(cfg) {
   live.cfg = cfg
 }
 
+export async function toggleTheme() {
+  const cfg = $state.snapshot(live.cfg)
+  if (!cfg) return
+  cfg.theme = cfg.theme === 'light' ? 'dark' : 'light'
+  await saveConfig(cfg)
+}
+
 export async function enterHud() {
   await api.SetHudMode(true)
   live.hud = true

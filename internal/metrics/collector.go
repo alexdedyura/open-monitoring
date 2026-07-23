@@ -5,6 +5,7 @@ import (
 	"math"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,13 @@ import (
 	gnet "github.com/shirou/gopsutil/v4/net"
 )
 
+// lhmProvider abstracts the two LibreHardwareMonitor sources: the bundled
+// lhm-bridge process (preferred) and the HTTP endpoint of an external LHM app.
+type lhmProvider interface {
+	Latest() *LHMReading
+	Stop()
+}
+
 // Collector samples all metric sources on a fixed interval, keeps an in-memory
 // ring buffer for chart hydration and notifies a subscriber on every sample.
 type Collector struct {
@@ -24,8 +32,9 @@ type Collector struct {
 	interval time.Duration
 	onSample func(Sample)
 
-	nvidia *NvidiaSource
-	lhm    *LHMSource
+	nvidia  *NvidiaSource
+	lhm     lhmProvider
+	lhmMode string
 
 	prevIO    map[string]disk.IOCountersStat
 	prevIOAt  time.Time
@@ -47,7 +56,15 @@ func NewCollector(intervalMs int, lhmURL string, onSample func(Sample)) *Collect
 		intervalC: make(chan time.Duration, 1),
 	}
 	c.nvidia = StartNvidia()
-	c.lhm = StartLHM(lhmURL)
+	if path := FindBridge(); path != "" {
+		c.lhm = StartBridge(path)
+		c.lhmMode = "bridge"
+	} else if src := StartLHM(lhmURL); src != nil {
+		c.lhm = src
+		c.lhmMode = "http"
+	} else {
+		c.lhmMode = "none"
+	}
 	return c
 }
 
@@ -222,7 +239,9 @@ func (c *Collector) Static() StaticInfo {
 	}
 	if ci, err := cpu.Info(); err == nil && len(ci) > 0 {
 		info.CPUModel = ci[0].ModelName
-		info.CPUCores = int(ci[0].Cores)
+	}
+	if n, err := cpu.Counts(false); err == nil {
+		info.CPUCores = n // physical cores
 	}
 	if n, err := cpu.Counts(true); err == nil {
 		info.CPUThreads = n
@@ -247,7 +266,54 @@ func (c *Collector) Static() StaticInfo {
 			}
 		}
 	}
+	info.LHMMode = c.lhmMode
+	info.Board = boardName()
+	info.RAM = ramInfo()
+	info.IsAdmin = isElevated()
 	return info
+}
+
+// DiskHealth merges WMI physical-drive info (model, media, bus, health status)
+// with SMART data from the LHM source (temperature, remaining life).
+func (c *Collector) DiskHealth() []DiskHealthView {
+	disks := physicalDisks()
+	var smart []StorageHealth
+	if c.lhm != nil {
+		if r := c.lhm.Latest(); r != nil {
+			smart = r.Storage
+		}
+	}
+	for i := range disks {
+		dm := strings.ToLower(disks[i].Model)
+		for _, s := range smart {
+			sn := strings.ToLower(s.Name)
+			if strings.Contains(dm, sn) || strings.Contains(sn, dm) {
+				disks[i].TempC = s.TempC
+				disks[i].LifePercent = s.LifePercent
+				disks[i].DataWrittenGB = s.DataWrittenGB
+				break
+			}
+		}
+	}
+	// SMART-only drives WMI did not report (rare, e.g. RAID members)
+	for _, s := range smart {
+		found := false
+		sn := strings.ToLower(s.Name)
+		for i := range disks {
+			dm := strings.ToLower(disks[i].Model)
+			if strings.Contains(dm, sn) || strings.Contains(sn, dm) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			disks = append(disks, DiskHealthView{
+				Model: s.Name, TempC: s.TempC,
+				LifePercent: s.LifePercent, DataWrittenGB: s.DataWrittenGB,
+			})
+		}
+	}
+	return disks
 }
 
 // LHMAlive reports whether LibreHardwareMonitor's endpoint currently responds.

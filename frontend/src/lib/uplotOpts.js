@@ -1,8 +1,11 @@
 // Shared uPlot option factory: recessive axes, mono type, crosshair with a
 // live legend as the hover layer, optional drag-to-zoom (double-click resets).
 
-const AXIS_INK = '#5f6873'
-const GRID_INK = 'rgba(255,255,255,0.05)'
+const CHROME = {
+  dark: {axis: '#5f6873', grid: 'rgba(255,255,255,0.05)'},
+  light: {axis: '#8a94a0', grid: 'rgba(15,23,42,0.07)'},
+}
+
 const MONO = '11px "Cascadia Mono", Consolas, monospace'
 
 export function hhmmss(t) {
@@ -15,7 +18,8 @@ function niceMax(max) {
 }
 
 // series: [{label, color, digits?, fill?}] over buffer keys handled by caller
-export function makeOpts({width = 600, height = 170, series, yMax = null, unit = '', zoom = false}) {
+export function makeOpts({width = 600, height = 170, series, yMax = null, unit = '', zoom = false, theme = 'dark'}) {
+  const ink = CHROME[theme] ?? CHROME.dark
   return {
     width,
     height,
@@ -35,7 +39,7 @@ export function makeOpts({width = 600, height = 170, series, yMax = null, unit =
     },
     axes: [
       {
-        stroke: AXIS_INK,
+        stroke: ink.axis,
         font: MONO,
         grid: {show: false},
         ticks: {show: false},
@@ -43,9 +47,9 @@ export function makeOpts({width = 600, height = 170, series, yMax = null, unit =
         values: (u, ts) => ts.map(hhmmss),
       },
       {
-        stroke: AXIS_INK,
+        stroke: ink.axis,
         font: MONO,
-        grid: {stroke: GRID_INK, width: 1},
+        grid: {stroke: ink.grid, width: 1},
         ticks: {show: false},
         size: 46,
       },

@@ -1,9 +1,10 @@
 <script>
   import {live, api} from './state.svelte.js'
-  import {COLORS, diskTotals} from './metricDefs.js'
-  import {CHARTS} from './chartDefs.js'
+  import {palette, diskTotals} from './metricDefs.js'
+  import {CHARTS, resolveSeries} from './chartDefs.js'
   import StatTile from './StatTile.svelte'
   import StreamChart from './StreamChart.svelte'
+  import StoragePanel from './StoragePanel.svelte'
 
   const RANGES = [
     {sec: 60, label: '1m'},
@@ -39,6 +40,8 @@
     return `${h}:${m}:${String(s % 60).padStart(2, '0')}`
   })
 
+  const theme = $derived(live.cfg?.theme ?? 'dark')
+  const pal = $derived(palette(theme))
   const s = $derived(live.sample)
   const dsk = $derived(s ? diskTotals(s) : [0, 0])
   const f0 = (v) => (v == null ? '—' : v.toFixed(0))
@@ -98,57 +101,63 @@
     <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
       <StatTile
         label="CPU"
-        color={COLORS.cpu}
+        color={pal.cpu}
         value={f0(s.cpu.usage) + '%'}
         sub={s.cpu.tempC ? `${f0(s.cpu.tempC)}° · ${f0(s.cpu.clockMhz)} MHz` : ''}
         bars={s.cpu.perCore}
       />
       <StatTile
         label="GPU"
-        color={COLORS.gpu}
+        color={pal.gpu}
         value={s.gpu ? f0(s.gpu.usage) + '%' : '—'}
         sub={s.gpu ? `${f0(s.gpu.tempC)}° · ${f0(s.gpu.powerW)} W` : 'no data'}
         pct={s.gpu?.usage ?? 0}
       />
       <StatTile
         label="RAM"
-        color={COLORS.ram}
+        color={pal.ram}
         value={f1(s.mem.used / 2 ** 30) + ' GB'}
         sub={`${f0(s.mem.usedPercent)}% of ${f0(s.mem.total / 2 ** 30)} GB`}
         pct={s.mem.usedPercent}
       />
       <StatTile
         label="VRAM"
-        color={COLORS.vram}
+        color={pal.vram}
         value={s.gpu?.memUsedMb ? f1(s.gpu.memUsedMb / 1024) + ' GB' : '—'}
         sub={s.gpu?.memTotalMb ? `of ${f1(s.gpu.memTotalMb / 1024)} GB` : ''}
         pct={s.gpu?.memTotalMb ? (s.gpu.memUsedMb / s.gpu.memTotalMb) * 100 : 0}
       />
       <StatTile
         label="Disk"
-        color={COLORS.diskR}
+        color={pal.diskR}
         value={`R ${f0(dsk[0])} W ${f0(dsk[1])}`}
         sub="MB/s"
       />
       <StatTile
         label="Net"
-        color={COLORS.netU}
+        color={pal.netU}
         value={`↓${f1(s.net.downBps * 8 / 1e6)} ↑${f1(s.net.upBps * 8 / 1e6)}`}
         sub="Mbit/s"
       />
     </div>
 
-    <!-- charts -->
-    <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      {#each CHARTS as c (c.title)}
-        <StreamChart
-          title={c.title}
-          unit={c.unit}
-          series={c.series}
-          yMax={c.yMaxKey ? yMaxByKey[c.yMaxKey] : (c.yMax ?? null)}
-        />
-      {/each}
-    </div>
+    <!-- charts (recreated on theme switch so uPlot picks up new colors) -->
+    {#key theme}
+      <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {#each CHARTS as c (c.title)}
+          <StreamChart
+            title={c.title}
+            unit={c.unit}
+            series={resolveSeries(c.series, theme)}
+            yMax={c.yMaxKey ? yMaxByKey[c.yMaxKey] : (c.yMax ?? null)}
+            {theme}
+          />
+        {/each}
+      </div>
+    {/key}
+
+    <!-- storage details -->
+    <StoragePanel />
   {:else}
     <div class="flex h-64 items-center justify-center font-mono text-sm text-mut">
       Collecting first samples…

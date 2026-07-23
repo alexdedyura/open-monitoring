@@ -30,3 +30,8 @@ frontend/dist/*
 frontend/wailsjs/
 build/bin/
 frontend/package.json.md5
+
+# lhm-bridge (.NET) build output
+tools/lhm-bridge/bin/
+tools/lhm-bridge/obj/
+tools/lhm-bridge/publish/

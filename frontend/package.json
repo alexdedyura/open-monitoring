@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "simple-icons": "^16.27.0",
     "uplot": "^1.6.32"
   },
   "devDependencies": {

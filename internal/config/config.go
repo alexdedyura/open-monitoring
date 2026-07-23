@@ -19,6 +19,7 @@ type Config struct {
 	SampleIntervalMs int       `json:"sampleIntervalMs"`
 	MaxRecordMinutes int       `json:"maxRecordMinutes"`
 	LHMUrl           string    `json:"lhmUrl"`
+	Theme            string    `json:"theme"` // dark | light
 	Hud              HudConfig `json:"hud"`
 }
 
@@ -27,6 +28,7 @@ func Default() Config {
 		SampleIntervalMs: 1000,
 		MaxRecordMinutes: 240,
 		LHMUrl:           "http://localhost:8085/data.json",
+		Theme:            "dark",
 		Hud: HudConfig{
 			Metrics: []string{"cpu", "cpuTemp", "ram", "gpu", "gpuTemp", "vram", "net"},
 			Opacity: 0.85,
@@ -67,6 +69,9 @@ func Load() Config {
 	}
 	if cfg.Hud.Opacity < 0.2 || cfg.Hud.Opacity > 1 {
 		cfg.Hud.Opacity = 0.85
+	}
+	if cfg.Theme != "light" {
+		cfg.Theme = "dark"
 	}
 	return cfg
 }

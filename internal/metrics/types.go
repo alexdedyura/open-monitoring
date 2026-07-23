@@ -48,15 +48,47 @@ type NetMetrics struct {
 	DownBps float64 `json:"downBps"`
 }
 
+// StorageHealth is SMART-ish data for one physical drive, from the LHM bridge.
+type StorageHealth struct {
+	Name          string  `json:"name"`
+	TempC         float64 `json:"tempC"`
+	LifePercent   float64 `json:"lifePercent"` // remaining life, 0 = unknown
+	DataWrittenGB float64 `json:"dataWrittenGb"`
+}
+
+// DiskHealthView merges WMI drive info with LHM SMART data for the frontend.
+type DiskHealthView struct {
+	Model         string  `json:"model"`
+	SizeGB        float64 `json:"sizeGb"`
+	Media         string  `json:"media"` // SSD / HDD / SCM / ""
+	Bus           string  `json:"bus"`   // NVMe / SATA / USB / ...
+	Health        string  `json:"health"`
+	TempC         float64 `json:"tempC"`
+	LifePercent   float64 `json:"lifePercent"`
+	DataWrittenGB float64 `json:"dataWrittenGb"`
+}
+
+type RAMInfo struct {
+	Modules  int     `json:"modules"`
+	ModuleGB float64 `json:"moduleGb"`
+	SpeedMT  int     `json:"speedMt"`
+	Type     string  `json:"type"`
+	Vendor   string  `json:"vendor"`
+}
+
 // StaticInfo describes the machine; collected once at startup.
 type StaticInfo struct {
 	CPUModel     string   `json:"cpuModel"`
 	CPUCores     int      `json:"cpuCores"`
 	CPUThreads   int      `json:"cpuThreads"`
 	RAMTotal     uint64   `json:"ramTotal"`
+	RAM          RAMInfo  `json:"ram"`
 	GPUName      string   `json:"gpuName"`
+	Board        string   `json:"board"`
 	Disks        []string `json:"disks"`
 	OS           string   `json:"os"`
 	LHMConnected bool     `json:"lhmConnected"`
+	LHMMode      string   `json:"lhmMode"` // bridge | http | none
 	NvidiaSMI    bool     `json:"nvidiaSmi"`
+	IsAdmin      bool     `json:"isAdmin"`
 }

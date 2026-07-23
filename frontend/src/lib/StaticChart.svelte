@@ -4,14 +4,14 @@
   import {makeOpts} from './uplotOpts.js'
 
   // data: uPlot-shaped [[t...], [v...], ...]; drag to zoom, double-click resets
-  let {title, unit = '', series = [], data, yMax = null, height = 200} = $props()
+  let {title, unit = '', series = [], data, yMax = null, height = 200, theme = 'dark'} = $props()
 
   let el
   let plot
 
   onMount(() => {
     plot = new uPlot(
-      makeOpts({width: el.clientWidth || 600, height, series, yMax, unit, zoom: true}),
+      makeOpts({width: el.clientWidth || 600, height, series, yMax, unit, zoom: true, theme}),
       data,
       el
     )
