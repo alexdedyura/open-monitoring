@@ -9,6 +9,16 @@ type Sample struct {
 	GPU   *GPUMetrics   `json:"gpu,omitempty"`
 	Disks []DiskMetrics `json:"disks"`
 	Net   NetMetrics    `json:"net"`
+	FPS   *FPSMetrics   `json:"fps,omitempty"`
+}
+
+// FPSMetrics describes the foreground application's frame rate (PresentMon).
+type FPSMetrics struct {
+	Cur     float64 `json:"cur"`   // over the last second
+	Avg     float64 `json:"avg"`   // over the 60s window
+	Low1    float64 `json:"low1"`  // 1% low
+	Low01   float64 `json:"low01"` // 0.1% low
+	Process string  `json:"process"`
 }
 
 type CPUMetrics struct {

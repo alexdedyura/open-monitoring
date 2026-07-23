@@ -266,6 +266,7 @@ func (a *App) ExportSessionCSV(id int64) (string, error) {
 		"ram_used_mb", "ram_used_pct",
 		"gpu_usage_pct", "gpu_temp_c", "vram_used_mb", "gpu_power_w", "gpu_core_mhz", "gpu_fan_pct",
 		"disk_read_kbps", "disk_write_kbps", "net_up_kbps", "net_down_kbps",
+		"fps_cur", "fps_avg", "fps_low1", "fps_low01",
 	})
 	for _, s := range samples {
 		var dr, dw float64
@@ -277,12 +278,17 @@ func (a *App) ExportSessionCSV(id int64) (string, error) {
 		if g == nil {
 			g = &metrics.GPUMetrics{}
 		}
+		fps := s.FPS
+		if fps == nil {
+			fps = &metrics.FPSMetrics{}
+		}
 		w.Write([]string{
 			time.UnixMilli(s.T).Format("2006-01-02 15:04:05"),
 			ff(s.CPU.Usage), ff(s.CPU.TempC), ff(s.CPU.PowerW), ff(s.CPU.ClockMHz),
 			ff(float64(s.Mem.Used) / 1024 / 1024), ff(s.Mem.UsedPercent),
 			ff(g.Usage), ff(g.TempC), ff(g.MemUsedMB), ff(g.PowerW), ff(g.CoreMHz), ff(g.FanPercent),
 			ff(dr / 1024), ff(dw / 1024), ff(s.Net.UpBps / 1024), ff(s.Net.DownBps / 1024),
+			ff(fps.Cur), ff(fps.Avg), ff(fps.Low1), ff(fps.Low01),
 		})
 	}
 	return path, nil
@@ -301,9 +307,12 @@ func (a *App) SetHudMode(on bool) {
 		a.dashW, a.dashH = runtime.WindowGetSize(a.ctx)
 		runtime.WindowSetAlwaysOnTop(a.ctx, true)
 		runtime.WindowSetSize(a.ctx, a.cfg.Hud.W, a.cfg.Hud.H)
-		runtime.WindowSetPosition(a.ctx, a.cfg.Hud.X, a.cfg.Hud.Y)
+		x, y := a.hudPosition()
+		runtime.WindowSetPosition(a.ctx, x, y)
 	} else {
-		a.cfg.Hud.X, a.cfg.Hud.Y = runtime.WindowGetPosition(a.ctx)
+		if a.cfg.Hud.Anchor == "free" {
+			a.cfg.Hud.X, a.cfg.Hud.Y = runtime.WindowGetPosition(a.ctx)
+		}
 		a.cfg.Hud.W, a.cfg.Hud.H = runtime.WindowGetSize(a.ctx)
 		config.Save(a.cfg)
 		runtime.WindowSetAlwaysOnTop(a.ctx, false)
@@ -313,6 +322,34 @@ func (a *App) SetHudMode(on bool) {
 		}
 	}
 	a.hud = on
+}
+
+// hudPosition resolves the overlay position: a fixed screen corner (with a
+// small margin) or the last free-drag position.
+func (a *App) hudPosition() (int, int) {
+	const margin = 16
+	if a.cfg.Hud.Anchor == "free" || a.cfg.Hud.Anchor == "" {
+		return a.cfg.Hud.X, a.cfg.Hud.Y
+	}
+	sw, sh := 1920, 1080
+	if screens, err := runtime.ScreenGetAll(a.ctx); err == nil {
+		for _, s := range screens {
+			if s.IsCurrent || s.IsPrimary {
+				sw, sh = s.Size.Width, s.Size.Height
+				if s.IsCurrent {
+					break
+				}
+			}
+		}
+	}
+	x, y := margin, margin
+	if a.cfg.Hud.Anchor == "tr" || a.cfg.Hud.Anchor == "br" {
+		x = sw - a.cfg.Hud.W - margin
+	}
+	if a.cfg.Hud.Anchor == "bl" || a.cfg.Hud.Anchor == "br" {
+		y = sh - a.cfg.Hud.H - margin
+	}
+	return x, y
 }
 
 func ff(v float64) string {

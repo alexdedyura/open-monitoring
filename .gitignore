@@ -35,3 +35,6 @@ frontend/package.json.md5
 tools/lhm-bridge/bin/
 tools/lhm-bridge/obj/
 tools/lhm-bridge/publish/
+
+# PresentMon binary (downloaded from official Intel releases, see README)
+tools/presentmon/

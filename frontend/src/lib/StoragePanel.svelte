@@ -82,9 +82,9 @@
           <div class="flex items-baseline justify-between">
             <span class="font-mono text-xs text-ink">{v.name}</span>
             <span class="font-mono text-[11px]">
-              <span style="color:{pal.diskR}">R {mb(v.readBps)}</span>
+              <span style="color:{pal.diskR}">Read {mb(v.readBps)}</span>
               <span class="text-mut">·</span>
-              <span style="color:{pal.diskW}">W {mb(v.writeBps)}</span>
+              <span style="color:{pal.diskW}">Write {mb(v.writeBps)}</span>
               <span class="text-mut"> MB/s</span>
             </span>
           </div>

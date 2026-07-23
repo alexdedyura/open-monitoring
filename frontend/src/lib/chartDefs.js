@@ -37,6 +37,7 @@ export const CHARTS = [
       {key: 'netUp', label: 'Up', pkey: 'netU', digits: 1},
     ],
   },
+  {title: 'FPS (foreground app)', unit: 'fps', series: [{key: 'fps', label: 'FPS', pkey: 'fps'}]},
 ]
 
 export function resolveSeries(series, theme) {
@@ -50,6 +51,7 @@ export function buildBuffers(samples) {
     t: [], cpu: [], cpuTemp: [], cpuPow: [], cpuClock: [], ram: [],
     gpu: [], gpuTemp: [], gpuPow: [], gpuClock: [], gpuFan: [], vram: [],
     diskR: [], diskW: [], netUp: [], netDown: [],
+    fps: [],
   }
   for (const s of samples) {
     const g = s.gpu ?? null
@@ -74,6 +76,7 @@ export function buildBuffers(samples) {
     b.diskW.push(dw / 2 ** 20)
     b.netUp.push(s.net.upBps * 8 / 1e6)
     b.netDown.push(s.net.downBps * 8 / 1e6)
+    b.fps.push(s.fps?.cur ?? null)
   }
   return b
 }

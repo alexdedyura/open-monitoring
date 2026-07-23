@@ -1,6 +1,6 @@
 <script>
   import {live, saveConfig, api} from './state.svelte.js'
-  import {METRICS} from './metricDefs.js'
+  import {METRICS, HUD_GROUPS} from './metricDefs.js'
   import {BrowserOpenURL} from '../../wailsjs/runtime/runtime.js'
   import SystemPanel from './SystemPanel.svelte'
   import {onMount} from 'svelte'
@@ -17,22 +17,10 @@
     }
   })
 
-  const enabled = $derived(cfg.hud.metrics)
-  const available = $derived(Object.keys(METRICS).filter((k) => !cfg.hud.metrics.includes(k)))
-
-  function move(i, dir) {
-    const j = i + dir
-    if (j < 0 || j >= cfg.hud.metrics.length) return
-    const m = cfg.hud.metrics
-    ;[m[i], m[j]] = [m[j], m[i]]
-  }
-
-  function remove(i) {
-    cfg.hud.metrics.splice(i, 1)
-  }
-
-  function add(k) {
-    cfg.hud.metrics.push(k)
+  function toggleMetric(k) {
+    const i = cfg.hud.metrics.indexOf(k)
+    if (i >= 0) cfg.hud.metrics.splice(i, 1)
+    else cfg.hud.metrics.push(k)
   }
 
   async function save() {
@@ -74,31 +62,24 @@
       </select>
     </label>
 
-    <div class="space-y-1.5">
-      <div class="flex items-center justify-between gap-4">
-        <span class="text-sm text-ink2">Sensor engine</span>
-        {#if live.info?.lhmMode === 'bridge' && live.info?.lhmConnected}
-          <span class="font-mono text-[11px] text-ram">● embedded (lhm-bridge)</span>
-        {:else if live.info?.lhmMode === 'http' && live.info?.lhmConnected}
-          <span class="font-mono text-[11px] text-ram">● external LHM (HTTP)</span>
-        {:else}
-          <span class="font-mono text-[11px] text-mut">○ starting…</span>
-        {/if}
-      </div>
-      <input
-        class="w-full rounded-md border border-line bg-card2 px-2.5 py-1.5 font-mono text-xs text-ink focus:border-ink2 focus:outline-none"
-        bind:value={cfg.lhmUrl}
-        title="Fallback URL of an external LibreHardwareMonitor web server"
-      />
-      <p class="text-xs leading-relaxed text-mut">
-        Sensors run on an embedded
-        <button class="underline hover:text-ink2" onclick={() => BrowserOpenURL('https://github.com/LibreHardwareMonitor/LibreHardwareMonitor')}>LibreHardwareMonitor</button>
-        engine (lhm-bridge.exe, spawned automatically). The URL above is only a
-        fallback to an external LHM instance if the bridge binary is missing.
-        Run the app <span class="text-ink2">as administrator</span> to unlock CPU
-        temperature, package power and drive SMART data.
-      </p>
-    </div>
+    <label class="flex items-center justify-between gap-4">
+      <span class="text-sm text-ink2">Interface scale</span>
+      <select
+        class="rounded-md border border-line bg-card2 px-2 py-1.5 font-mono text-xs text-ink focus:outline-none"
+        bind:value={cfg.uiScale}
+      >
+        <option value={1}>100%</option>
+        <option value={1.25}>125%</option>
+        <option value={1.5}>150%</option>
+        <option value={2}>200%</option>
+      </select>
+    </label>
+
+    <p class="text-xs leading-relaxed text-mut">
+      Sensors run on an embedded
+      <button class="underline hover:text-ink2" onclick={() => BrowserOpenURL('https://github.com/LibreHardwareMonitor/LibreHardwareMonitor')}>LibreHardwareMonitor</button>
+      engine, started automatically with the app.
+    </p>
   </div>
 
   <!-- HUD -->
@@ -107,34 +88,54 @@
 
     <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
       <div>
-        <div class="mb-2 text-sm text-ink2">Rows, in order</div>
-        <div class="space-y-1">
-          {#each enabled as k, i (k)}
-            <div class="flex items-center gap-2 rounded-md border border-line bg-card2 px-2.5 py-1.5">
-              <span class="w-4 font-mono text-[10px] text-mut">{i + 1}</span>
-              <span class="h-2 w-2 rounded-sm" style="background:{METRICS[k]?.color}"></span>
-              <span class="grow font-mono text-xs text-ink">{METRICS[k]?.label ?? k}</span>
-              <button class="px-1 font-mono text-xs text-mut hover:text-ink" onclick={() => move(i, -1)}>↑</button>
-              <button class="px-1 font-mono text-xs text-mut hover:text-ink" onclick={() => move(i, 1)}>↓</button>
-              <button class="px-1 font-mono text-xs text-mut hover:text-rec" onclick={() => remove(i)}>✕</button>
+        <div class="mb-2 text-sm text-ink2">Sections and rows</div>
+        <div class="space-y-3">
+          {#each HUD_GROUPS as g (g.id)}
+            <div>
+              <div class="mb-1.5 flex items-center gap-2">
+                <span class="h-2 w-2 rounded-sm" style="background:{METRICS[g.keys[0]]?.color}"></span>
+                <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-mut">{g.header(live.info)}</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                {#each g.keys as k (k)}
+                  <button
+                    class="rounded-full border px-2.5 py-1 font-mono text-[11px] {cfg.hud.metrics.includes(k)
+                      ? 'border-ink2 bg-card2 text-ink'
+                      : 'border-line text-mut hover:text-ink2'}"
+                    onclick={() => toggleMetric(k)}
+                  >
+                    {METRICS[k].row}
+                  </button>
+                {/each}
+              </div>
             </div>
           {/each}
         </div>
-        {#if available.length}
-          <div class="mt-3 flex flex-wrap gap-1.5">
-            {#each available as k (k)}
-              <button
-                class="rounded-full border border-line px-2.5 py-1 font-mono text-[11px] text-ink2 hover:bg-card2"
-                onclick={() => add(k)}
-              >
-                + {METRICS[k].label}
-              </button>
-            {/each}
-          </div>
-        {/if}
       </div>
 
       <div class="space-y-4">
+        <div>
+          <div class="mb-1.5 text-sm text-ink2">Screen position</div>
+          <div class="flex flex-wrap gap-1.5">
+            {#each [
+              ['free', 'Free (drag)'],
+              ['tl', '↖ Top left'],
+              ['tr', '↗ Top right'],
+              ['bl', '↙ Bottom left'],
+              ['br', '↘ Bottom right'],
+            ] as [val, lbl] (val)}
+              <button
+                class="rounded-full border px-2.5 py-1 font-mono text-[11px] {cfg.hud.anchor === val
+                  ? 'border-ink2 bg-card2 text-ink'
+                  : 'border-line text-mut hover:text-ink2'}"
+                onclick={() => (cfg.hud.anchor = val)}
+              >
+                {lbl}
+              </button>
+            {/each}
+          </div>
+        </div>
+
         <label class="block">
           <div class="mb-1 flex justify-between text-sm text-ink2">
             <span>Background opacity</span>

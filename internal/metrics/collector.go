@@ -35,6 +35,7 @@ type Collector struct {
 	nvidia  *NvidiaSource
 	lhm     lhmProvider
 	lhmMode string
+	fps     *FPSSource
 
 	prevIO    map[string]disk.IOCountersStat
 	prevIOAt  time.Time
@@ -56,6 +57,7 @@ func NewCollector(intervalMs int, lhmURL string, onSample func(Sample)) *Collect
 		intervalC: make(chan time.Duration, 1),
 	}
 	c.nvidia = StartNvidia()
+	c.fps = StartFPS()
 	if path := FindBridge(); path != "" {
 		c.lhm = StartBridge(path)
 		c.lhmMode = "bridge"
@@ -83,6 +85,9 @@ func (c *Collector) Stop() {
 	}
 	if c.lhm != nil {
 		c.lhm.Stop()
+	}
+	if c.fps != nil {
+		c.fps.Stop()
 	}
 }
 
@@ -169,6 +174,10 @@ func (c *Collector) collect() Sample {
 
 	c.collectDisks(&s, now)
 	c.collectNet(&s, now)
+
+	if c.fps != nil {
+		s.FPS = c.fps.Metrics()
+	}
 	return s
 }
 

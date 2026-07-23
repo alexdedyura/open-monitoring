@@ -130,8 +130,8 @@
       <StatTile
         label="Disk"
         color={pal.diskR}
-        value={`R ${f0(dsk[0])} W ${f0(dsk[1])}`}
-        sub="MB/s"
+        value={`${f1(dsk[0])} / ${f1(dsk[1])}`}
+        sub="Read / Write · MB/s"
       />
       <StatTile
         label="Net"

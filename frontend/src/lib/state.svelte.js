@@ -14,9 +14,11 @@ export const buf = {
   vram: [],
   diskR: [], diskW: [],
   netUp: [], netDown: [],
+  fps: [],
 }
 
 export const live = $state({
+  ready: false, // backend handshake done (splash gate)
   tick: 0,
   sample: null,
   info: null,
@@ -50,6 +52,7 @@ function pushSample(s) {
   buf.diskW.push(dw / 2 ** 20)
   buf.netUp.push(s.net.upBps * 8 / 1e6)
   buf.netDown.push(s.net.downBps * 8 / 1e6)
+  buf.fps.push(s.fps?.cur ?? null)
   if (buf.t.length > CAP_SECONDS) {
     for (const k in buf) buf[k].shift()
   }
@@ -82,6 +85,7 @@ export async function init() {
   EventsOn('recording', (r) => {
     live.rec = r
   })
+  live.ready = true
 }
 
 export async function saveConfig(cfg) {
