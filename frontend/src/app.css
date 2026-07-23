@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@theme {
+  --color-page: #0e1013;
+  --color-card: #15181d;
+  --color-card2: #1b1f26;
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-ink: #eef1f4;
+  --color-ink2: #9aa3ad;
+  --color-mut: #5f6873;
+  --color-rec: #e34948;
+
+  /* entity colors — validated categorical palette (dataviz), fixed assignment */
+  --color-cpu: #3987e5;
+  --color-gpu: #d95926;
+  --color-ram: #199e70;
+  --color-vram: #c98500;
+  --color-diskr: #9085e9;
+  --color-diskw: #e66767;
+  --color-netd: #008300;
+  --color-netu: #d55181;
+
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+html, body, #app {
+  height: 100%;
+}
+
+body {
+  /* transparent so the HUD overlay window can see through; the dashboard paints its own bg */
+  background: transparent;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+input, textarea {
+  user-select: text;
+}
+
+.drag {
+  --wails-draggable: drag;
+}
+
+.nodrag {
+  --wails-draggable: no-drag;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.rec-dot {
+  animation: rec-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot { animation: none; }
+}
+
+/* uPlot chrome: recessive axes, mono legend as the hover/tooltip layer */
+.u-legend {
+  font: 10px var(--font-mono) !important;
+  color: var(--color-ink2) !important;
+  text-align: left !important;
+  margin-top: 2px !important;
+}
+
+.u-legend .u-marker {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 2px;
+}
+
+.u-legend th {
+  font-weight: 400 !important;
+}
+
+.u-select {
+  background: rgba(57, 135, 229, 0.15) !important;
+}
