@@ -41,6 +41,20 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
+      # NSIS is preinstalled on the Windows runner images but not on PATH;
+      # fall back to Chocolatey if a future image drops it.
+      - name: Add NSIS to PATH
+        shell: pwsh
+        run: |
+          $candidates = "${env:ProgramFiles(x86)}\NSIS\Bin", "${env:ProgramFiles(x86)}\NSIS", "$env:ProgramFiles\NSIS\Bin", "$env:ProgramFiles\NSIS"
+          $dir = $candidates | Where-Object { Test-Path (Join-Path $_ 'makensis.exe') } | Select-Object -First 1
+          if (-not $dir) {
+            choco install nsis -y --no-progress
+            $dir = $candidates | Where-Object { Test-Path (Join-Path $_ 'makensis.exe') } | Select-Object -First 1
+          }
+          if (-not $dir) { throw 'makensis not found' }
+          Add-Content $env:GITHUB_PATH $dir
+
       - name: Build
         shell: pwsh
         run: .\build.ps1 -Installer
