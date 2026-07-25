@@ -331,10 +331,12 @@ func (a *App) SetHudMode(on bool) {
 		hudTopmostOn() // keep re-asserting topmost over borderless games
 	} else {
 		hudTopmostOff()
-		if a.cfg.Hud.Anchor == "free" {
-			a.cfg.Hud.X, a.cfg.Hud.Y = runtime.WindowGetPosition(a.ctx)
-		}
 		a.cfg.Hud.W, a.cfg.Hud.H = runtime.WindowGetSize(a.ctx)
+		if a.cfg.Hud.Anchor == "free" {
+			x, y := runtime.WindowGetPosition(a.ctx)
+			// Never persist a position that would hide the overlay next time.
+			a.cfg.Hud.X, a.cfg.Hud.Y = ClampToScreen(x, y, a.cfg.Hud.W, a.cfg.Hud.H)
+		}
 		config.Save(a.cfg)
 		runtime.WindowSetAlwaysOnTop(a.ctx, false)
 		if a.dashW > 0 {
@@ -345,32 +347,14 @@ func (a *App) SetHudMode(on bool) {
 	a.hud = on
 }
 
-// hudPosition resolves the overlay position: a fixed screen corner (with a
-// small margin) or the last free-drag position.
+// hudPosition resolves the overlay position: a fixed corner of the primary
+// monitor, or the last free-drag position — clamped so a stale coordinate can
+// never leave the overlay parked outside every screen.
 func (a *App) hudPosition() (int, int) {
-	const margin = 16
 	if a.cfg.Hud.Anchor == "free" || a.cfg.Hud.Anchor == "" {
-		return a.cfg.Hud.X, a.cfg.Hud.Y
+		return ClampToScreen(a.cfg.Hud.X, a.cfg.Hud.Y, a.cfg.Hud.W, a.cfg.Hud.H)
 	}
-	sw, sh := 1920, 1080
-	if screens, err := runtime.ScreenGetAll(a.ctx); err == nil {
-		for _, s := range screens {
-			if s.IsCurrent || s.IsPrimary {
-				sw, sh = s.Size.Width, s.Size.Height
-				if s.IsCurrent {
-					break
-				}
-			}
-		}
-	}
-	x, y := margin, margin
-	if a.cfg.Hud.Anchor == "tr" || a.cfg.Hud.Anchor == "br" {
-		x = sw - a.cfg.Hud.W - margin
-	}
-	if a.cfg.Hud.Anchor == "bl" || a.cfg.Hud.Anchor == "br" {
-		y = sh - a.cfg.Hud.H - margin
-	}
-	return x, y
+	return AnchorPosition(a.cfg.Hud.Anchor, a.cfg.Hud.W, a.cfg.Hud.H)
 }
 
 func ff(v float64) string {

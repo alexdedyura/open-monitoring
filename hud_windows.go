@@ -27,6 +27,8 @@ var (
 	procGetWindow            = modUser32.NewProc("GetWindow")
 	procGetWindowTextLengthW = modUser32.NewProc("GetWindowTextLengthW")
 	procSetWindowPos         = modUser32.NewProc("SetWindowPos")
+	procGetSystemMetrics     = modUser32.NewProc("GetSystemMetrics")
+	procSystemParametersInfo = modUser32.NewProc("SystemParametersInfoW")
 )
 
 const (
@@ -35,7 +37,87 @@ const (
 	swpNoMove     = 0x0002
 	swpNoActivate = 0x0010
 	hwndTopmost   = ^uintptr(0) // HWND_TOPMOST == (HWND)-1
+
+	smXVirtualScreen  = 76
+	smYVirtualScreen  = 77
+	smCXVirtualScreen = 78
+	smCYVirtualScreen = 79
+
+	spiGetWorkArea = 0x0030
 )
+
+// minVisible is how much of the overlay must remain on screen for a saved
+// position to be considered usable.
+const minVisible = 80
+
+// virtualScreen returns the bounding rectangle of all monitors. On a
+// multi-monitor desktop its origin is negative when a monitor sits left of or
+// above the primary one, so "negative" alone never means "off screen".
+func virtualScreen() (x, y, w, h int) {
+	get := func(index uintptr) int {
+		v, _, _ := procGetSystemMetrics.Call(index)
+		return int(int32(v))
+	}
+	return get(smXVirtualScreen), get(smYVirtualScreen),
+		get(smCXVirtualScreen), get(smCYVirtualScreen)
+}
+
+type rect struct{ Left, Top, Right, Bottom int32 }
+
+// workArea returns the primary monitor's usable area, excluding the taskbar.
+func workArea() (x, y, w, h int) {
+	var r rect
+	ok, _, _ := procSystemParametersInfo.Call(
+		spiGetWorkArea, 0, uintptr(unsafe.Pointer(&r)), 0)
+	if ok == 0 {
+		vx, vy, vw, vh := virtualScreen()
+		return vx, vy, vw, vh
+	}
+	return int(r.Left), int(r.Top), int(r.Right - r.Left), int(r.Bottom - r.Top)
+}
+
+// ClampToScreen keeps a window rectangle reachable. A saved position can become
+// unusable when monitors are unplugged or rearranged — the window is then still
+// there, just painted where nobody can see it. If too little of it would remain
+// visible, fall back to the top-left of the work area.
+func ClampToScreen(x, y, w, h int) (int, int) {
+	vx, vy, vw, vh := virtualScreen()
+	if vw <= 0 || vh <= 0 {
+		return x, y
+	}
+
+	visible := overlap(x, x+w, vx, vx+vw) >= minVisible &&
+		overlap(y, y+h, vy, vy+vh) >= minVisible
+	if visible {
+		return x, y
+	}
+
+	const margin = 16
+	wx, wy, _, _ := workArea()
+	return wx + margin, wy + margin
+}
+
+func overlap(aStart, aEnd, bStart, bEnd int) int {
+	start := max(aStart, bStart)
+	end := min(aEnd, bEnd)
+	return end - start
+}
+
+// AnchorPosition places a window of the given size in a corner of the primary
+// monitor's work area.
+func AnchorPosition(anchor string, w, h int) (int, int) {
+	const margin = 16
+	ax, ay, aw, ah := workArea()
+
+	x, y := ax+margin, ay+margin
+	if anchor == "tr" || anchor == "br" {
+		x = ax + aw - w - margin
+	}
+	if anchor == "bl" || anchor == "br" {
+		y = ay + ah - h - margin
+	}
+	return x, y
+}
 
 // The Go runtime can only ever create a bounded number of callbacks and never
 // frees them, so the EnumWindows callback is built exactly once. (Creating it
