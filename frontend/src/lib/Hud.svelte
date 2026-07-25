@@ -1,8 +1,20 @@
 <script>
-  import {live, exitHud} from './state.svelte.js'
+  import {live, exitHud, buf} from './state.svelte.js'
   import {METRICS, HUD_GROUPS} from './metricDefs.js'
+  import Sparkline from './Sparkline.svelte'
 
   let hover = $state(false)
+
+  // Last ~90 samples feed the sparklines; copied per tick so Svelte sees a new
+  // array (the ring buffers are deliberately non-reactive).
+  const GRAPH_POINTS = 90
+  const series = $derived.by(() => {
+    void live.tick
+    return {
+      fps: buf.fps.slice(-GRAPH_POINTS),
+      frameMs: buf.frameMs.slice(-GRAPH_POINTS),
+    }
+  })
 
   // Sections: HUD_GROUPS order, rows filtered by the user's enabled metric set.
   const sections = $derived.by(() => {
@@ -63,12 +75,30 @@
                   </span>
                 </div>
               {/if}
-              {#each g.rows.filter((r) => r.key !== 'fps') as m (m.key)}
+              {#each g.rows.filter((r) => r.key !== 'fps' && !r.graph) as m (m.key)}
                 <div class="flex items-baseline justify-between gap-4 leading-[17px]">
                   <span class="text-[11px] text-white/60" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">{m.row}</span>
                   <span class="whitespace-nowrap text-[12px] font-semibold text-white" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">
                     {m.value(live.sample, live.info)}
                   </span>
+                </div>
+              {/each}
+
+              {#each g.rows.filter((r) => r.graph) as m (m.key)}
+                <div class="mt-1.5">
+                  <div class="mb-0.5 text-[9px] uppercase tracking-[0.1em] text-white/40" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">
+                    {m.row}
+                  </div>
+                  <div class="rounded border border-white/10 bg-black/40 px-1 pt-1">
+                    <Sparkline
+                      values={series[m.graph.key]}
+                      color={m.color}
+                      unit={m.graph.unit}
+                      digits={m.graph.digits}
+                      invert={m.graph.invert ?? false}
+                      height={38}
+                    />
+                  </div>
                 </div>
               {/each}
               {#if live.sample.fps?.process}

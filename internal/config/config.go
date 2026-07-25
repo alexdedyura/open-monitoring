@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 type HudConfig struct {
@@ -22,8 +23,8 @@ type Config struct {
 	SampleIntervalMs int     `json:"sampleIntervalMs"`
 	MaxRecordMinutes int     `json:"maxRecordMinutes"`
 	LHMUrl           string  `json:"lhmUrl"` // fallback only; no UI
-	Theme            string  `json:"theme"`  // dark | light
-	UiScale          float64 `json:"uiScale"`
+	Theme            string  `json:"theme"`   // dark | light
+	UiScale          float64 `json:"uiScale"` // 0 = follow the Windows display scaling
 	// EnableCpuSensors turns on the LibreHardwareMonitor bridge, which loads
 	// the WinRing0 kernel driver to read CPU temperature/power. Microsoft
 	// Defender flags that driver as vulnerable (CVE-2020-14979) and quarantines
@@ -32,7 +33,7 @@ type Config struct {
 	Hud              HudConfig `json:"hud"`
 }
 
-const currentVersion = 4
+const currentVersion = 5
 
 // defaultHudMetrics mirrors a classic in-game OSD: GPU block, CPU block, RAM
 // block and the FPS block, each rendered as a titled section in the HUD.
@@ -41,7 +42,7 @@ func defaultHudMetrics() []string {
 		"gpu", "gpuTemp", "gpuClock", "gpuMemClock", "gpuPow", "vram",
 		"cpu", "cpuTemp", "cpuClock", "cpuPow",
 		"ram", "ramLoad", "ramSpeed",
-		"fps", "fpsAvg", "fpsLow1", "fpsLow01",
+		"fps", "fpsAvg", "fpsLow1", "fpsLow01", "frameGraph", "fpsGraph",
 	}
 }
 
@@ -52,7 +53,7 @@ func Default() Config {
 		MaxRecordMinutes: 240,
 		LHMUrl:           "http://localhost:8085/data.json",
 		Theme:            "dark",
-		UiScale:          1,
+		UiScale:          0, // match Windows
 		EnableCpuSensors: false,
 		Hud: HudConfig{
 			Metrics: defaultHudMetrics(),
@@ -61,7 +62,7 @@ func Default() Config {
 			X:       40,
 			Y:       40,
 			W:       320,
-			H:       560,
+			H:       620,
 		},
 	}
 }
@@ -104,9 +105,9 @@ func Load() Config {
 		cfg.Theme = "dark"
 	}
 	switch cfg.UiScale {
-	case 1, 1.25, 1.5, 2:
+	case 0, 1, 1.25, 1.5, 2:
 	default:
-		cfg.UiScale = 1
+		cfg.UiScale = 0
 	}
 	switch cfg.Hud.Anchor {
 	case "free", "tl", "tr", "bl", "br":
@@ -123,6 +124,24 @@ func Load() Config {
 		}
 		// v4 only introduces EnableCpuSensors, which correctly defaults to
 		// false for existing installs — nothing else to migrate.
+		//
+		// v5 makes the interface follow the Windows display scaling. Installs
+		// that never changed the scale were pinned at 100% purely because that
+		// was the old default, so move them onto the new automatic behaviour.
+		if cfg.Version < 5 {
+			if cfg.UiScale == 1 {
+				cfg.UiScale = 0
+			}
+			// v5 also adds the HUD sparklines; switch them on for everyone.
+			for _, k := range []string{"frameGraph", "fpsGraph"} {
+				if !slices.Contains(cfg.Hud.Metrics, k) {
+					cfg.Hud.Metrics = append(cfg.Hud.Metrics, k)
+				}
+			}
+			if cfg.Hud.H < 620 {
+				cfg.Hud.H = 620 // room for the graphs
+			}
+		}
 		cfg.Version = currentVersion
 		Save(cfg)
 	}

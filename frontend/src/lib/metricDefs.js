@@ -187,6 +187,19 @@ export const METRICS = {
     color: COLORS.fps,
     value: (s) => (s.fps?.low01 ? f0(s.fps.low01) : '—'),
   },
+  // Rendered as sparklines rather than value rows; see Hud.svelte.
+  fpsGraph: {
+    label: 'FPS graph',
+    row: 'FPS graph',
+    color: COLORS.fps,
+    graph: {key: 'fps', unit: ' fps', digits: 0},
+  },
+  frameGraph: {
+    label: 'Frame time graph',
+    row: 'Frame time graph',
+    color: COLORS.vram,
+    graph: {key: 'frameMs', unit: ' ms', digits: 1, invert: true},
+  },
 }
 
 export function cleanModel(name) {
@@ -205,5 +218,5 @@ export const HUD_GROUPS = [
   {id: 'ram', colorKey: 'ram', header: () => 'Memory', keys: ['ram', 'ramLoad', 'ramSpeed']},
   {id: 'disk', colorKey: 'diskR', header: () => 'Storage', keys: ['diskRead', 'diskWrite']},
   {id: 'net', colorKey: 'netU', header: () => 'Network', keys: ['netDown', 'netUp']},
-  {id: 'fps', colorKey: 'fps', header: () => 'FPS', keys: ['fps', 'fpsAvg', 'fpsLow1', 'fpsLow01']},
+  {id: 'fps', colorKey: 'fps', header: () => 'FPS', keys: ['fps', 'fpsAvg', 'fpsLow1', 'fpsLow01', 'frameGraph', 'fpsGraph']},
 ]

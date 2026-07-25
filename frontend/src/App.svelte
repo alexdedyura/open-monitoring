@@ -21,9 +21,18 @@
   const booting = $derived(!live.ready || !splashMinDone)
 
   // UI scale applies to the main app only; the HUD overlay stays 1:1.
+  //
+  // A scale of 0 means "match Windows". WebView2 may already be applying the
+  // display scaling itself (devicePixelRatio > 1), so zoom by whatever is left
+  // over — that lands on the OS scale either way instead of doubling it.
   $effect(() => {
     document.documentElement.dataset.theme = live.cfg?.theme ?? 'dark'
-    document.documentElement.style.zoom = live.hud ? '' : String(live.cfg?.uiScale ?? 1)
+
+    const chosen = live.cfg?.uiScale ?? 0
+    const target = chosen || live.info?.osScale || 1
+    const applied = target / (window.devicePixelRatio || 1)
+    document.documentElement.style.zoom =
+      live.hud || Math.abs(applied - 1) < 0.01 ? '' : String(applied)
   })
 
   function onHudClick() {

@@ -99,7 +99,8 @@ type StaticInfo struct {
 	Disks        []string `json:"disks"`
 	OS           string   `json:"os"`
 	LHMConnected bool     `json:"lhmConnected"`
-	LHMMode      string   `json:"lhmMode"` // bridge | http | none
+	LHMMode      string   `json:"lhmMode"` // bridge | http | none | off
 	NvidiaSMI    bool     `json:"nvidiaSmi"`
 	IsAdmin      bool     `json:"isAdmin"`
+	OSScale      float64  `json:"osScale"` // Windows display scaling, e.g. 1.25
 }

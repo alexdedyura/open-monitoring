@@ -10,8 +10,8 @@ configurable always-on-top HUD overlay.
 
 - **Live dashboard** — CPU (total + per-core), RAM, GPU, VRAM, disk I/O and
   network, streaming charts with 1m/5m/15m/30m windows. Dark and light themes
-  (both chart palettes are colorblind-validated), interface scaling
-  (100–200%).
+  (both chart palettes are colorblind-validated). The interface follows the
+  Windows display scaling by default, or can be pinned to 100–200%.
 - **FPS of the foreground app** — current / average / 1% low / 0.1% low via
   [Intel PresentMon](https://github.com/GameTechDev/PresentMon) (ETW frame
   capture), shown in the HUD and recorded into sessions.
@@ -22,11 +22,13 @@ configurable always-on-top HUD overlay.
   plus physical drives with model, bus (NVMe/SATA), media type, health status,
   and SMART temperature / remaining life / power-on hours. All of it comes from
   the Windows storage WMI namespace — **no kernel driver involved**.
+- **CPU clock** — real boost frequency of the fastest core, read from Windows
+  performance counters, no kernel driver needed.
 - **CPU temperature and power (opt-in)** — off by default; see
   [Why CPU temperature is optional](#why-cpu-temperature-is-optional). When
   enabled, a bundled `lhm-bridge.exe` (tiny C# worker over
   [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor),
-  MPL-2.0) streams package temperature, power and clocks.
+  MPL-2.0) streams package temperature and power.
 - The app requests **administrator elevation at launch** (manifest) — SMART
   counters and ETW frame capture need it, same as MSI Afterburner.
 - **System panel** — hardware summary with brand logos (Intel / AMD / NVIDIA
@@ -38,7 +40,8 @@ configurable always-on-top HUD overlay.
 - **HUD overlay** — one click turns the window into a compact, frameless,
   always-on-top overlay styled like a classic in-game OSD: titled sections per
   hardware (GPU / CPU / Memory / Storage / Network / FPS) with per-row toggles,
-  opacity control and screen anchoring (free drag or any corner). Works over
+  live FPS and frame-time sparklines, opacity control and screen anchoring
+  (free drag or any corner). Works over
   windowed / borderless-fullscreen games; exclusive fullscreen bypasses any
   desktop overlay — the app explains this before switching.
 
@@ -73,6 +76,7 @@ UAC prompt on every rebuild; temporarily set `requestedExecutionLevel` to
 |---|---|
 | CPU / RAM / disk / network | [gopsutil v4](https://github.com/shirou/gopsutil) |
 | NVIDIA GPU | `nvidia-smi --query-gpu … -lms 1000` (one streaming process) |
+| CPU boost clock | WMI `Win32_PerfFormattedData_Counters_ProcessorInformation` — no kernel driver |
 | CPU temperature / package power, non-NVIDIA GPUs (opt-in) | `lhm-bridge` on LibreHardwareMonitorLib (HTTP endpoint as fallback) |
 | Drive SMART (temperature, wear, power-on hours) | WMI `MSFT_StorageReliabilityCounter` — no kernel driver |
 | Drive models / bus / health, board, RAM modules | WMI (`MSFT_PhysicalDisk`, `Win32_BaseBoard`, `Win32_PhysicalMemory`) |
@@ -101,8 +105,10 @@ consulted. So the choice is per-feature, not per-sensor, and this app makes it
 explicitly:
 
 - **Default (off)** — no kernel driver is loaded, nothing is quarantined. CPU
-  load, GPU, memory, drives with SMART, network and FPS all work. CPU
-  temperature, package power and core clock show `—`.
+  load and boost clock, GPU, memory, drives with SMART, network and FPS all
+  work. Only CPU temperature and package power show `—`, because Windows
+  exposes no driver-free source for them on desktop hardware (the ACPI thermal
+  zone that some laptops provide reports "not supported" there).
 - **Opt-in** — enable *CPU temperature and power* in Settings. Defender will
   flag the driver; you have to allow it deliberately, and that is a real
   trade-off, not a formality: the driver's vulnerability lets a local process

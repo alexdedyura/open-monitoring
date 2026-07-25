@@ -121,3 +121,15 @@ func ramInfo() RAMInfo {
 func isElevated() bool {
 	return windows.GetCurrentProcessToken().IsElevated()
 }
+
+var procGetDpiForSystem = windows.NewLazySystemDLL("user32.dll").NewProc("GetDpiForSystem")
+
+// osScale reports the display scaling Windows is configured for (1.25 for the
+// common "125%" setting), so the UI can match every other app on the desktop.
+func osScale() float64 {
+	dpi, _, _ := procGetDpiForSystem.Call()
+	if dpi == 0 {
+		return 1
+	}
+	return float64(dpi) / 96
+}

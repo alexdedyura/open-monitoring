@@ -14,7 +14,7 @@ export const buf = {
   vram: [],
   diskR: [], diskW: [],
   netUp: [], netDown: [],
-  fps: [],
+  fps: [], frameMs: [],
 }
 
 export const live = $state({
@@ -53,6 +53,7 @@ function pushSample(s) {
   buf.netUp.push(s.net.upBps * 8 / 1e6)
   buf.netDown.push(s.net.downBps * 8 / 1e6)
   buf.fps.push(s.fps?.cur ?? null)
+  buf.frameMs.push(s.fps?.cur ? 1000 / s.fps.cur : null)
   if (buf.t.length > CAP_SECONDS) {
     for (const k in buf) buf[k].shift()
   }

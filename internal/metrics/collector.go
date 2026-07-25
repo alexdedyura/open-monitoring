@@ -32,10 +32,11 @@ type Collector struct {
 	interval time.Duration
 	onSample func(Sample)
 
-	nvidia  *NvidiaSource
-	lhm     lhmProvider
-	lhmMode string
-	fps     *FPSSource
+	nvidia   *NvidiaSource
+	lhm      lhmProvider
+	lhmMode  string
+	fps      *FPSSource
+	cpuClock *CPUClockSource
 
 	prevIO    map[string]disk.IOCountersStat
 	prevIOAt  time.Time
@@ -72,6 +73,7 @@ func NewCollector(opts Options, onSample func(Sample)) *Collector {
 	}
 	c.nvidia = StartNvidia()
 	c.fps = StartFPS()
+	c.cpuClock = StartCPUClock()
 	if opts.EnableCpuSensors {
 		if path := FindBridge(); path != "" {
 			c.lhm = StartBridge(path)
@@ -105,6 +107,9 @@ func (c *Collector) Stop() {
 	}
 	if c.fps != nil {
 		c.fps.Stop()
+	}
+	if c.cpuClock != nil {
+		c.cpuClock.Stop()
 	}
 }
 
@@ -187,6 +192,9 @@ func (c *Collector) collect() Sample {
 				s.GPU = r.GPU // AMD/Intel GPUs surface through LibreHardwareMonitor
 			}
 		}
+	}
+	if s.CPU.ClockMHz == 0 && c.cpuClock != nil {
+		s.CPU.ClockMHz = c.cpuClock.MHz() // driver-free fallback
 	}
 
 	c.collectDisks(&s, now)
@@ -300,6 +308,7 @@ func (c *Collector) Static() StaticInfo {
 	info.Board = boardName()
 	info.RAM = ramInfo()
 	info.IsAdmin = isElevated()
+	info.OSScale = osScale()
 	return info
 }
 

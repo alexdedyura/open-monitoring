@@ -66,11 +66,19 @@
     </label>
 
     <label class="flex items-center justify-between gap-4">
-      <span class="text-sm text-ink2">Interface scale</span>
+      <span class="text-sm text-ink2">
+        Interface scale
+        {#if !cfg.uiScale && live.info?.osScale}
+          <span class="ml-1 font-mono text-[10px] text-mut">
+            now {Math.round(live.info.osScale * 100)}%
+          </span>
+        {/if}
+      </span>
       <select
         class="rounded-md border border-line bg-card2 px-2 py-1.5 font-mono text-xs text-ink focus:outline-none"
         bind:value={cfg.uiScale}
       >
+        <option value={0}>Match Windows</option>
         <option value={1}>100%</option>
         <option value={1.25}>125%</option>
         <option value={1.5}>150%</option>
