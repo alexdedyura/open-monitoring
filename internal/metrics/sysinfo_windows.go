@@ -10,6 +10,7 @@ import (
 )
 
 type msftPhysicalDisk struct {
+	DeviceId     string
 	FriendlyName string
 	MediaType    uint16
 	BusType      uint16
@@ -40,30 +41,59 @@ var healthNames = map[uint16]string{0: "Healthy", 1: "Warning", 2: "Unhealthy"}
 
 var ddrNames = map[uint16]string{20: "DDR", 21: "DDR2", 24: "DDR3", 26: "DDR4", 34: "DDR5"}
 
-// physicalDisks lists physical drives via the Windows Storage WMI namespace
-// (works without elevation, unlike SMART pass-through).
+// physicalDisks lists physical drives via the Windows Storage WMI namespace,
+// merged with the driver-free SMART counters from the same namespace.
 func physicalDisks() []DiskHealthView {
 	var disks []msftPhysicalDisk
-	q := "SELECT FriendlyName, MediaType, BusType, HealthStatus, Size FROM MSFT_PhysicalDisk"
-	if err := wmi.QueryNamespace(q, &disks, `root\microsoft\windows\storage`); err != nil {
+	q := "SELECT DeviceId, FriendlyName, MediaType, BusType, HealthStatus, Size FROM MSFT_PhysicalDisk"
+
+	var err error
+	runWMI(func() {
+		err = wmi.QueryNamespace(q, &disks, `root\microsoft\windows\storage`)
+	})
+	if err != nil {
 		return nil
 	}
+
+	byID, ordered := readReliability()
 	out := make([]DiskHealthView, 0, len(disks))
+	matched := 0
 	for _, d := range disks {
-		out = append(out, DiskHealthView{
+		view := DiskHealthView{
 			Model:  strings.TrimSpace(d.FriendlyName),
 			SizeGB: float64(d.Size) / 1e9,
 			Media:  mediaNames[d.MediaType],
 			Bus:    busNames[d.BusType],
 			Health: healthNames[d.HealthStatus],
-		})
+		}
+		if sr, ok := byID[d.DeviceId]; ok {
+			view.TempC = sr.TempC
+			view.LifePercent = sr.LifePercent
+			view.PowerOnHours = sr.PowerOnHours
+			matched++
+		}
+		out = append(out, view)
+	}
+
+	// Some controllers report counter ids that do not line up with the disk
+	// ids; when nothing matched but the counts agree, pair them by order.
+	if matched == 0 && len(ordered) == len(out) {
+		for i := range out {
+			out[i].TempC = ordered[i].TempC
+			out[i].LifePercent = ordered[i].LifePercent
+			out[i].PowerOnHours = ordered[i].PowerOnHours
+		}
 	}
 	return out
 }
 
 func boardName() string {
 	var boards []win32BaseBoard
-	if err := wmi.Query("SELECT Manufacturer, Product FROM Win32_BaseBoard", &boards); err != nil || len(boards) == 0 {
+	var err error
+	runWMI(func() {
+		err = wmi.Query("SELECT Manufacturer, Product FROM Win32_BaseBoard", &boards)
+	})
+	if err != nil || len(boards) == 0 {
 		return ""
 	}
 	return strings.TrimSpace(boards[0].Manufacturer + " " + boards[0].Product)
@@ -71,7 +101,11 @@ func boardName() string {
 
 func ramInfo() RAMInfo {
 	var mods []win32PhysicalMemory
-	if err := wmi.Query("SELECT Manufacturer, Speed, Capacity, SMBIOSMemoryType FROM Win32_PhysicalMemory", &mods); err != nil || len(mods) == 0 {
+	var err error
+	runWMI(func() {
+		err = wmi.Query("SELECT Manufacturer, Speed, Capacity, SMBIOSMemoryType FROM Win32_PhysicalMemory", &mods)
+	})
+	if err != nil || len(mods) == 0 {
 		return RAMInfo{}
 	}
 	info := RAMInfo{

@@ -23,8 +23,11 @@
     else cfg.hud.metrics.push(k)
   }
 
+  let needsRestart = $state(false)
+
   async function save() {
     await saveConfig($state.snapshot(cfg))
+    needsRestart = await api.RestartPending()
     saved = true
     setTimeout(() => (saved = false), 2500)
   }
@@ -75,11 +78,27 @@
       </select>
     </label>
 
-    <p class="text-xs leading-relaxed text-mut">
-      Sensors run on an embedded
-      <button class="underline hover:text-ink2" onclick={() => BrowserOpenURL('https://github.com/LibreHardwareMonitor/LibreHardwareMonitor')}>LibreHardwareMonitor</button>
-      engine, started automatically with the app.
-    </p>
+    <div class="space-y-2 rounded-md border border-line bg-card2/40 p-3">
+      <label class="flex cursor-pointer items-start justify-between gap-4">
+        <span>
+          <span class="text-sm text-ink">CPU temperature and power</span>
+          <span class="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.1em] text-mut">
+            loads a kernel driver
+          </span>
+        </span>
+        <input type="checkbox" class="mt-1 accent-white" bind:checked={cfg.enableCpuSensors} />
+      </label>
+      <p class="text-xs leading-relaxed text-mut">
+        Reading CPU package temperature and power needs ring-0 access, which the
+        <button class="underline hover:text-ink2" onclick={() => BrowserOpenURL('https://github.com/LibreHardwareMonitor/LibreHardwareMonitor')}>LibreHardwareMonitor</button>
+        engine gets through the WinRing0 driver. Microsoft Defender classifies
+        that driver as vulnerable
+        (<button class="underline hover:text-ink2" onclick={() => BrowserOpenURL('https://nvd.nist.gov/vuln/detail/CVE-2020-14979')}>CVE-2020-14979</button>)
+        and quarantines it, so it stays <span class="text-ink2">off</span> by default.
+        Everything else — CPU load, GPU, memory, drives with SMART, network and
+        FPS — works without it.
+      </p>
+    </div>
   </div>
 
   <!-- HUD -->
@@ -167,6 +186,9 @@
     </button>
     {#if saved}
       <span class="font-mono text-xs text-ram">Saved ✓</span>
+    {/if}
+    {#if needsRestart}
+      <span class="font-mono text-xs text-vram">Restart the app to apply the sensor change</span>
     {/if}
   </div>
 </div>

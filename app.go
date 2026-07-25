@@ -25,7 +25,8 @@ type App struct {
 	col *metrics.Collector
 	st  *store.Store
 
-	staticInfo *metrics.StaticInfo
+	staticInfo     *metrics.StaticInfo
+	restartPending bool
 
 	recMu sync.Mutex
 	rec   *recState
@@ -67,7 +68,16 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.st = st
 
-	a.col = metrics.NewCollector(a.cfg.SampleIntervalMs, a.cfg.LHMUrl, a.onSample)
+	if !a.cfg.EnableCpuSensors {
+		// Leave no WinRing0 service registered while the feature is off.
+		go metrics.CleanupRing0Driver()
+	}
+
+	a.col = metrics.NewCollector(metrics.Options{
+		IntervalMs:       a.cfg.SampleIntervalMs,
+		LHMUrl:           a.cfg.LHMUrl,
+		EnableCpuSensors: a.cfg.EnableCpuSensors,
+	}, a.onSample)
 	a.col.Start()
 }
 
@@ -156,9 +166,18 @@ func (a *App) SaveConfig(cfg config.Config) error {
 	if cfg.MaxRecordMinutes < 1 || cfg.MaxRecordMinutes > 240 {
 		cfg.MaxRecordMinutes = 240
 	}
+	// Starting or stopping the kernel-driver-backed sensor source mid-session
+	// is not worth the complexity; it takes effect on the next launch.
+	a.restartPending = cfg.EnableCpuSensors != a.cfg.EnableCpuSensors
 	a.cfg = cfg
 	a.col.SetInterval(cfg.SampleIntervalMs)
 	return config.Save(cfg)
+}
+
+// RestartPending reports whether a setting was changed that only applies after
+// the app is restarted.
+func (a *App) RestartPending() bool {
+	return a.restartPending
 }
 
 func (a *App) GetHistory(seconds int) []metrics.Sample {

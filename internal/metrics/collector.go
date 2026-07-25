@@ -42,31 +42,48 @@ type Collector struct {
 	prevNet   gnet.IOCountersStat
 	prevNetAt time.Time
 
-	usage     map[string]float64 // drive -> used space %
+	usage     map[string]float64 // drive -> used space %; guarded by mu
 	usageAt   time.Time
 	cancel    context.CancelFunc
 	intervalC chan time.Duration
+
+	diskMu     sync.Mutex
+	diskHealth []DiskHealthView // refreshed off the request path; WMI is slow
 }
 
-func NewCollector(intervalMs int, lhmURL string, onSample func(Sample)) *Collector {
+// Options configures which optional sensor sources the collector starts.
+type Options struct {
+	IntervalMs int
+	LHMUrl     string
+	// EnableCpuSensors starts the LibreHardwareMonitor bridge. It loads the
+	// WinRing0 kernel driver, which Defender quarantines as vulnerable, so it
+	// is opt-in and off by default.
+	EnableCpuSensors bool
+}
+
+func NewCollector(opts Options, onSample func(Sample)) *Collector {
 	c := &Collector{
 		ringCap:   3600, // up to 1h of hydration history at 1s
-		interval:  time.Duration(intervalMs) * time.Millisecond,
+		interval:  time.Duration(opts.IntervalMs) * time.Millisecond,
 		onSample:  onSample,
 		usage:     map[string]float64{},
 		intervalC: make(chan time.Duration, 1),
+		lhmMode:   "off",
 	}
 	c.nvidia = StartNvidia()
 	c.fps = StartFPS()
-	if path := FindBridge(); path != "" {
-		c.lhm = StartBridge(path)
-		c.lhmMode = "bridge"
-	} else if src := StartLHM(lhmURL); src != nil {
-		c.lhm = src
-		c.lhmMode = "http"
-	} else {
-		c.lhmMode = "none"
+	if opts.EnableCpuSensors {
+		if path := FindBridge(); path != "" {
+			c.lhm = StartBridge(path)
+			c.lhmMode = "bridge"
+		} else if src := StartLHM(opts.LHMUrl); src != nil {
+			c.lhm = src
+			c.lhmMode = "http"
+		} else {
+			c.lhmMode = "none"
+		}
 	}
+	go c.refreshDiskHealth() // prime the cache without blocking startup
 	return c
 }
 
@@ -185,13 +202,16 @@ func (c *Collector) collectDisks(s *Sample, now time.Time) {
 	io, err := disk.IOCounters()
 	if err == nil && len(io) > 0 {
 		dt := now.Sub(c.prevIOAt).Seconds()
+		c.mu.Lock()
+		usage := c.usage // refreshed wholesale by refreshUsage; read under lock
+		c.mu.Unlock()
 		for name, cur := range io {
 			d := DiskMetrics{Name: name}
 			if prev, ok := c.prevIO[name]; ok && dt > 0 {
 				d.ReadBps = math.Max(0, float64(cur.ReadBytes-prev.ReadBytes)/dt)
 				d.WriteBps = math.Max(0, float64(cur.WriteBytes-prev.WriteBytes)/dt)
 			}
-			d.UsedPercent = c.usage[name]
+			d.UsedPercent = usage[name]
 			s.Disks = append(s.Disks, d)
 		}
 		c.prevIO = io
@@ -202,6 +222,7 @@ func (c *Collector) collectDisks(s *Sample, now time.Time) {
 	if now.Sub(c.usageAt) > 30*time.Second {
 		c.usageAt = now
 		go c.refreshUsage()
+		go c.refreshDiskHealth()
 	}
 }
 
@@ -282,10 +303,23 @@ func (c *Collector) Static() StaticInfo {
 	return info
 }
 
-// DiskHealth merges WMI physical-drive info (model, media, bus, health status)
-// with SMART data from the LHM source (temperature, remaining life).
+// DiskHealth returns the cached drive list. The underlying WMI queries take
+// seconds on some systems, so they never run on a caller's goroutine — the UI
+// would appear frozen while one was in flight.
 func (c *Collector) DiskHealth() []DiskHealthView {
+	c.diskMu.Lock()
+	defer c.diskMu.Unlock()
+	out := make([]DiskHealthView, len(c.diskHealth))
+	copy(out, c.diskHealth)
+	return out
+}
+
+// refreshDiskHealth re-queries physical drives (model, bus, health, and the
+// driver-free SMART counters) and, when the optional LHM bridge is running,
+// folds in the one field it adds: total bytes written.
+func (c *Collector) refreshDiskHealth() {
 	disks := physicalDisks()
+
 	var smart []StorageHealth
 	if c.lhm != nil {
 		if r := c.lhm.Latest(); r != nil {
@@ -296,36 +330,19 @@ func (c *Collector) DiskHealth() []DiskHealthView {
 		dm := strings.ToLower(disks[i].Model)
 		for _, s := range smart {
 			sn := strings.ToLower(s.Name)
-			if strings.Contains(dm, sn) || strings.Contains(sn, dm) {
-				disks[i].TempC = s.TempC
-				disks[i].LifePercent = s.LifePercent
+			if sn != "" && (strings.Contains(dm, sn) || strings.Contains(sn, dm)) {
 				disks[i].DataWrittenGB = s.DataWrittenGB
 				break
 			}
 		}
 	}
-	// SMART-only drives WMI did not report (rare, e.g. RAID members)
-	for _, s := range smart {
-		found := false
-		sn := strings.ToLower(s.Name)
-		for i := range disks {
-			dm := strings.ToLower(disks[i].Model)
-			if strings.Contains(dm, sn) || strings.Contains(sn, dm) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			disks = append(disks, DiskHealthView{
-				Model: s.Name, TempC: s.TempC,
-				LifePercent: s.LifePercent, DataWrittenGB: s.DataWrittenGB,
-			})
-		}
-	}
-	return disks
+
+	c.diskMu.Lock()
+	c.diskHealth = disks
+	c.diskMu.Unlock()
 }
 
-// LHMAlive reports whether LibreHardwareMonitor's endpoint currently responds.
+// LHMAlive reports whether the optional CPU-sensor source is delivering data.
 func (c *Collector) LHMAlive() bool {
 	return c.lhm != nil && c.lhm.Latest() != nil
 }

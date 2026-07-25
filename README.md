@@ -18,16 +18,17 @@ configurable always-on-top HUD overlay.
 - **GPU telemetry** — usage, VRAM, temperature, power draw, clocks and fan via a
   single long-lived `nvidia-smi` stream (NVIDIA). AMD/Intel GPUs are picked up
   through the embedded sensor engine.
-- **Embedded LibreHardwareMonitor** — a bundled `lhm-bridge.exe` (tiny C# worker
-  over [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor),
-  MPL-2.0) is spawned automatically and streams CPU temperature, package power,
-  clocks, fans and drive SMART data. An external LHM web server
-  (`http://localhost:8085`) is used as fallback when the bridge binary is
-  missing. The app requests **administrator elevation at launch** (manifest) —
-  kernel-level sensors and ETW capture need it, same as MSI Afterburner.
 - **Storage monitoring** — per-volume live read/write speeds and space usage,
-  plus physical drives with model, bus (NVMe/SATA), media type, WMI health
-  status and SMART temperature / remaining life.
+  plus physical drives with model, bus (NVMe/SATA), media type, health status,
+  and SMART temperature / remaining life / power-on hours. All of it comes from
+  the Windows storage WMI namespace — **no kernel driver involved**.
+- **CPU temperature and power (opt-in)** — off by default; see
+  [Why CPU temperature is optional](#why-cpu-temperature-is-optional). When
+  enabled, a bundled `lhm-bridge.exe` (tiny C# worker over
+  [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor),
+  MPL-2.0) streams package temperature, power and clocks.
+- The app requests **administrator elevation at launch** (manifest) — SMART
+  counters and ETW frame capture need it, same as MSI Afterburner.
 - **System panel** — hardware summary with brand logos (Intel / AMD / NVIDIA
   via [simple-icons](https://github.com/simple-icons/simple-icons)): CPU,
   GPU, RAM modules (type/speed/vendor), motherboard, OS and drives.
@@ -72,7 +73,8 @@ UAC prompt on every rebuild; temporarily set `requestedExecutionLevel` to
 |---|---|
 | CPU / RAM / disk / network | [gopsutil v4](https://github.com/shirou/gopsutil) |
 | NVIDIA GPU | `nvidia-smi --query-gpu … -lms 1000` (one streaming process) |
-| Temperatures, fans, SMART, non-NVIDIA GPUs | embedded `lhm-bridge` on LibreHardwareMonitorLib (HTTP endpoint as fallback) |
+| CPU temperature / package power, non-NVIDIA GPUs (opt-in) | `lhm-bridge` on LibreHardwareMonitorLib (HTTP endpoint as fallback) |
+| Drive SMART (temperature, wear, power-on hours) | WMI `MSFT_StorageReliabilityCounter` — no kernel driver |
 | Drive models / bus / health, board, RAM modules | WMI (`MSFT_PhysicalDisk`, `Win32_BaseBoard`, `Win32_PhysicalMemory`) |
 | FPS / frame times of the foreground app | [Intel PresentMon](https://github.com/GameTechDev/PresentMon) (`--output_stdout` stream) |
 | Session storage | [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (pure Go, no cgo) |
@@ -84,6 +86,30 @@ The Go collector samples all sources on a configurable interval (250 ms – 5 s)
 keeps an in-memory ring buffer for chart hydration and pushes each sample to the
 frontend as a Wails event. Recording batches samples into SQLite transactions
 and auto-stops at the configured cap.
+
+## Why CPU temperature is optional
+
+Reading CPU package temperature and power requires ring-0 access to model
+specific registers. LibreHardwareMonitor — like most hardware monitors — gets
+that through the **WinRing0** driver, and since March 2025 Microsoft Defender
+classifies WinRing0 as a vulnerable driver ([CVE-2020-14979](https://nvd.nist.gov/vuln/detail/CVE-2020-14979))
+and quarantines it on sight.
+
+There is no way to keep the library and skip the driver: `Computer.Open()`
+calls `Ring0.Open()` unconditionally, before any of the `Is*Enabled` flags are
+consulted. So the choice is per-feature, not per-sensor, and this app makes it
+explicitly:
+
+- **Default (off)** — no kernel driver is loaded, nothing is quarantined. CPU
+  load, GPU, memory, drives with SMART, network and FPS all work. CPU
+  temperature, package power and core clock show `—`.
+- **Opt-in** — enable *CPU temperature and power* in Settings. Defender will
+  flag the driver; you have to allow it deliberately, and that is a real
+  trade-off, not a formality: the driver's vulnerability lets a local process
+  escalate to kernel privileges.
+
+Switching the setting off also stops and deletes the leftover `R0lhm-bridge`
+kernel service, so nothing stays registered.
 
 ## Roadmap
 

@@ -66,7 +66,7 @@ type StorageHealth struct {
 	DataWrittenGB float64 `json:"dataWrittenGb"`
 }
 
-// DiskHealthView merges WMI drive info with LHM SMART data for the frontend.
+// DiskHealthView merges WMI drive info with driver-free SMART counters.
 type DiskHealthView struct {
 	Model         string  `json:"model"`
 	SizeGB        float64 `json:"sizeGb"`
@@ -75,6 +75,7 @@ type DiskHealthView struct {
 	Health        string  `json:"health"`
 	TempC         float64 `json:"tempC"`
 	LifePercent   float64 `json:"lifePercent"`
+	PowerOnHours  float64 `json:"powerOnHours"`
 	DataWrittenGB float64 `json:"dataWrittenGb"`
 }
 

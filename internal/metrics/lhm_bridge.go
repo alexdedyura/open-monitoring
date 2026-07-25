@@ -77,6 +77,15 @@ func (b *BridgeSource) Stop() {
 }
 
 func (b *BridgeSource) loop(path string) {
+	// Restarting on a fixed short interval turns a persistently failing bridge
+	// into a storm: every start re-installs the WinRing0 driver, which an
+	// antivirus may quarantine, and the retry loop then hammers the machine.
+	// Back off, and give up entirely once the bridge clearly cannot run.
+	backoff := 10 * time.Second
+	const maxBackoff = 5 * time.Minute
+	failures := 0
+	const maxFailures = 5
+
 	for {
 		b.mu.Lock()
 		if b.closed {
@@ -85,6 +94,7 @@ func (b *BridgeSource) loop(path string) {
 		}
 		b.mu.Unlock()
 
+		startedAt := time.Now()
 		cmd := exec.Command(path, "2000", strconv.Itoa(os.Getpid()))
 		hideWindow(cmd)
 		stdout, err := cmd.StdoutPipe()
@@ -92,7 +102,14 @@ func (b *BridgeSource) loop(path string) {
 			err = cmd.Start()
 		}
 		if err != nil {
-			time.Sleep(15 * time.Second)
+			failures++
+			if failures >= maxFailures {
+				return
+			}
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+			}
 			continue
 		}
 		b.mu.Lock()
@@ -116,7 +133,23 @@ func (b *BridgeSource) loop(path string) {
 		if closed {
 			return
 		}
-		time.Sleep(10 * time.Second)
+
+		// A bridge that died almost immediately never produced sensors — most
+		// likely its driver was blocked. Count those; a long-lived run that
+		// merely crashed resets the budget.
+		if time.Since(startedAt) < 20*time.Second {
+			failures++
+			if failures >= maxFailures {
+				return
+			}
+		} else {
+			failures = 0
+			backoff = 10 * time.Second
+		}
+		time.Sleep(backoff)
+		if backoff < maxBackoff {
+			backoff *= 2
+		}
 	}
 }
 

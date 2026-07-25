@@ -37,16 +37,16 @@ const (
 	hwndTopmost   = ^uintptr(0) // HWND_TOPMOST == (HWND)-1
 )
 
-// findMainWindow returns our process's single top-level, visible, titled
-// window — the Wails main window (WebView2 runs in separate processes, so no
-// child windows are enumerated here).
-func findMainWindow() uintptr {
-	var found uintptr
-	pid := windows.GetCurrentProcessId()
-	cb := windows.NewCallback(func(h uintptr, _ uintptr) uintptr {
+// The Go runtime can only ever create a bounded number of callbacks and never
+// frees them, so the EnumWindows callback is built exactly once. (Creating it
+// per call would exhaust the table and abort the process after enough polls.)
+var (
+	enumFoundHwnd uintptr
+	enumPID       uint32
+	enumCallback  = windows.NewCallback(func(h uintptr, _ uintptr) uintptr {
 		var wpid uint32
 		procGetWindowThreadPID.Call(h, uintptr(unsafe.Pointer(&wpid)))
-		if wpid != pid {
+		if wpid != enumPID {
 			return 1 // keep enumerating
 		}
 		if owner, _, _ := procGetWindow.Call(h, gwOwner); owner != 0 {
@@ -58,11 +58,20 @@ func findMainWindow() uintptr {
 		if tl, _, _ := procGetWindowTextLengthW.Call(h); tl == 0 {
 			return 1
 		}
-		found = h
+		enumFoundHwnd = h
 		return 0 // stop
 	})
-	procEnumWindows.Call(cb, 0)
-	return found
+)
+
+// findMainWindow returns our process's single top-level, visible, titled
+// window — the Wails main window (WebView2 runs in separate processes, so no
+// child windows are enumerated here). Only ever called from the keeper
+// goroutine, so the shared enum state needs no lock.
+func findMainWindow() uintptr {
+	enumFoundHwnd = 0
+	enumPID = windows.GetCurrentProcessId()
+	procEnumWindows.Call(enumCallback, 0)
+	return enumFoundHwnd
 }
 
 type topmostKeeper struct {

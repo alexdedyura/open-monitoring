@@ -23,6 +23,7 @@
   const vols = $derived(live.sample?.disks ?? [])
   const mb = (bps) => (bps / 2 ** 20).toFixed(1)
 
+  // SMART counters come from the storage WMI namespace, which needs elevation.
   const smartMissing = $derived(
     drives.length > 0 && drives.every((d) => !d.tempC) && !live.info?.isAdmin
   )
@@ -46,7 +47,12 @@
           <div class="min-w-0 grow">
             <div class="truncate text-xs text-ink">{d.model}</div>
             <div class="font-mono text-[10px] text-mut">
-              {[d.bus, d.media, d.sizeGb ? d.sizeGb.toFixed(0) + ' GB' : ''].filter(Boolean).join(' · ')}
+              {[
+                d.bus,
+                d.media,
+                d.sizeGb ? d.sizeGb.toFixed(0) + ' GB' : '',
+                d.powerOnHours ? `${Math.round(d.powerOnHours).toLocaleString()} h powered on` : '',
+              ].filter(Boolean).join(' · ')}
             </div>
           </div>
           {#if d.tempC}

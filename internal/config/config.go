@@ -18,16 +18,21 @@ type HudConfig struct {
 }
 
 type Config struct {
-	Version          int       `json:"version"`
-	SampleIntervalMs int       `json:"sampleIntervalMs"`
-	MaxRecordMinutes int       `json:"maxRecordMinutes"`
-	LHMUrl           string    `json:"lhmUrl"` // fallback only; no UI
-	Theme            string    `json:"theme"`  // dark | light
-	UiScale          float64   `json:"uiScale"`
+	Version          int     `json:"version"`
+	SampleIntervalMs int     `json:"sampleIntervalMs"`
+	MaxRecordMinutes int     `json:"maxRecordMinutes"`
+	LHMUrl           string  `json:"lhmUrl"` // fallback only; no UI
+	Theme            string  `json:"theme"`  // dark | light
+	UiScale          float64 `json:"uiScale"`
+	// EnableCpuSensors turns on the LibreHardwareMonitor bridge, which loads
+	// the WinRing0 kernel driver to read CPU temperature/power. Microsoft
+	// Defender flags that driver as vulnerable (CVE-2020-14979) and quarantines
+	// it, so this stays OFF unless the user explicitly opts in.
+	EnableCpuSensors bool      `json:"enableCpuSensors"`
 	Hud              HudConfig `json:"hud"`
 }
 
-const currentVersion = 3
+const currentVersion = 4
 
 // defaultHudMetrics mirrors a classic in-game OSD: GPU block, CPU block, RAM
 // block and the FPS block, each rendered as a titled section in the HUD.
@@ -48,6 +53,7 @@ func Default() Config {
 		LHMUrl:           "http://localhost:8085/data.json",
 		Theme:            "dark",
 		UiScale:          1,
+		EnableCpuSensors: false,
 		Hud: HudConfig{
 			Metrics: defaultHudMetrics(),
 			Opacity: 0.85,
@@ -107,12 +113,16 @@ func Load() Config {
 	default:
 		cfg.Hud.Anchor = "free"
 	}
-	// The HUD switched to grouped sections with a new metric set (v2), then
-	// gained the FPS section (v3); reset the row selection once per upgrade.
 	if cfg.Version < currentVersion {
-		cfg.Hud.Metrics = defaultHudMetrics()
-		cfg.Hud.W = 320
-		cfg.Hud.H = 560
+		// The HUD switched to grouped sections with a new metric set (v2), then
+		// gained the FPS section (v3); reset the row selection once for those.
+		if cfg.Version < 3 {
+			cfg.Hud.Metrics = defaultHudMetrics()
+			cfg.Hud.W = 320
+			cfg.Hud.H = 560
+		}
+		// v4 only introduces EnableCpuSensors, which correctly defaults to
+		// false for existing installs — nothing else to migrate.
 		cfg.Version = currentVersion
 		Save(cfg)
 	}
