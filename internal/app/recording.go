@@ -1,10 +1,9 @@
 package app
 
 import (
-	"encoding/csv"
+	"encoding/base64"
 	"errors"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -144,20 +143,11 @@ func (a *App) statusLocked() RecStatus {
 	return status
 }
 
-// csvColumns is the header of an exported session, and defines the order the
-// rows below are written in.
-var csvColumns = []string{
-	"time", "cpu_usage_pct", "cpu_temp_c", "cpu_power_w", "cpu_clock_mhz",
-	"ram_used_mb", "ram_used_pct", "swap_used_mb", "swap_total_mb",
-	"gpu_usage_pct", "gpu_temp_c", "gpu_hotspot_c", "vram_used_mb",
-	"gpu_power_w", "gpu_core_mhz", "gpu_fan_pct",
-	"disk_read_kbps", "disk_write_kbps", "net_up_kbps", "net_down_kbps",
-	"fps_cur", "fps_avg", "fps_low1", "fps_low01",
-}
-
-// ExportSessionCSV asks the user for a target path and writes the session to
-// it. The returned path is empty when the user cancelled the dialog.
-func (a *App) ExportSessionCSV(id int64) (string, error) {
+// ExportSessionPNG saves an already-rendered snapshot of a session's charts.
+// The frontend renders the image — the charts only exist there — and passes
+// it as base64 PNG; this side asks where to save and writes the bytes. The
+// returned path is empty when the user cancelled the dialog.
+func (a *App) ExportSessionPNG(id int64, pngBase64 string) (string, error) {
 	if a.store == nil {
 		return "", errNoStore
 	}
@@ -167,71 +157,19 @@ func (a *App) ExportSessionCSV(id int64) (string, error) {
 		return "", err
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		DefaultFilename: sanitizeFilename(name) + ".csv",
-		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
+		DefaultFilename: sanitizeFilename(name) + ".png",
+		Filters:         []runtime.FileFilter{{DisplayName: "PNG image", Pattern: "*.png"}},
 	})
 	if err != nil || path == "" {
 		return "", err
 	}
 
-	samples, err := a.store.SessionSamples(id)
+	data, err := base64.StdEncoding.DecodeString(pngBase64)
 	if err != nil {
 		return "", err
 	}
-
-	f, err := os.Create(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-	defer w.Flush()
-
-	if err := w.Write(csvColumns); err != nil {
-		return "", err
-	}
-	for _, s := range samples {
-		if err := w.Write(csvRow(s)); err != nil {
-			return "", err
-		}
-	}
-	return path, w.Error()
+	return path, os.WriteFile(path, data, 0o644)
 }
-
-func csvRow(s metrics.Sample) []string {
-	var readBps, writeBps float64
-	for _, d := range s.Disks {
-		readBps += d.ReadBps
-		writeBps += d.WriteBps
-	}
-
-	// Optional sections are absent for samples recorded without a GPU or
-	// without PresentMon; a zero value exports as 0, which reads correctly as
-	// "nothing measured" in a spreadsheet.
-	gpu := s.GPU
-	if gpu == nil {
-		gpu = &metrics.GPUMetrics{}
-	}
-	fps := s.FPS
-	if fps == nil {
-		fps = &metrics.FPSMetrics{}
-	}
-
-	const kb, mb = 1024, 1024 * 1024
-	return []string{
-		time.UnixMilli(s.T).Format("2006-01-02 15:04:05"),
-		num(s.CPU.Usage), num(s.CPU.TempC), num(s.CPU.PowerW), num(s.CPU.ClockMHz),
-		num(float64(s.Mem.Used) / mb), num(s.Mem.UsedPercent),
-		num(float64(s.Mem.SwapUsed) / mb), num(float64(s.Mem.SwapTotal) / mb),
-		num(gpu.Usage), num(gpu.TempC), num(gpu.HotspotC), num(gpu.MemUsedMB),
-		num(gpu.PowerW), num(gpu.CoreMHz), num(gpu.FanPercent),
-		num(readBps / kb), num(writeBps / kb), num(s.Net.UpBps / kb), num(s.Net.DownBps / kb),
-		num(fps.Cur), num(fps.Avg), num(fps.Low1), num(fps.Low01),
-	}
-}
-
-func num(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
 
 // sanitizeFilename replaces the characters Windows forbids in a file name, so
 // a session named "GTA V: 12/07" still produces a valid default filename.

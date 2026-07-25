@@ -29,7 +29,6 @@
 
   const cards = $derived.by(() => {
     if (!info) return []
-    const swap = live.sample?.mem
     const out = [
       {
         icon: vendorOf(info.cpuModel) ?? 'cpu',
@@ -55,12 +54,6 @@
         sub: info.ram?.modules
           ? `${info.ram.modules} × ${info.ram.moduleGb.toFixed(0)} GB ${info.ram.type || ''}-${info.ram.speedMt} · ${info.ram.vendor}`
           : '',
-      },
-      {
-        icon: 'ram',
-        label: 'Page file',
-        name: swap?.swapTotal ? `${gb(swap.swapUsed)} / ${gb(swap.swapTotal)} GB` : '—',
-        sub: swap?.swapTotal ? 'in use / current size' : 'no page file',
       },
       {
         icon: 'board',

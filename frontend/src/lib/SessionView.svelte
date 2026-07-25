@@ -40,7 +40,7 @@
       class="rounded-md border border-line bg-card px-2.5 py-1.5 font-mono text-[11px] text-ink2 hover:bg-card2"
       onclick={onexport}
     >
-      Export CSV
+      Export PNG
     </button>
   </div>
 

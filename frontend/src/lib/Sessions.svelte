@@ -1,6 +1,7 @@
 <script>
   import {onMount} from 'svelte'
-  import {api} from './state.svelte.js'
+  import {api, live} from './state.svelte.js'
+  import {exportSessionPNG} from './exportPng.js'
   import SessionView from './SessionView.svelte'
 
   let sessions = $state([])
@@ -40,17 +41,25 @@
     await reload()
   }
 
-  async function exportCsv(id) {
-    const path = await api.ExportSessionCSV(id)
-    if (path) {
-      exportedTo = path
-      setTimeout(() => (exportedTo = ''), 5000)
+  let exporting = $state(0) // session id being rendered
+
+  async function exportPng(sess) {
+    if (exporting) return
+    exporting = sess.id
+    try {
+      const path = await exportSessionPNG(sess, live.cfg?.theme ?? 'dark')
+      if (path) {
+        exportedTo = path
+        setTimeout(() => (exportedTo = ''), 5000)
+      }
+    } finally {
+      exporting = 0
     }
   }
 </script>
 
 {#if open}
-  <SessionView session={open} onback={() => { open = null; reload() }} onexport={() => exportCsv(open.id)} />
+  <SessionView session={open} onback={() => { open = null; reload() }} onexport={() => exportPng(open)} />
 {:else}
   <div class="space-y-3 p-4">
     <div class="flex items-baseline justify-between">
@@ -82,10 +91,11 @@
               Open
             </button>
             <button
-              class="rounded-md border border-line px-2.5 py-1 font-mono text-[11px] text-ink2 hover:bg-page"
-              onclick={() => exportCsv(sess.id)}
+              class="rounded-md border border-line px-2.5 py-1 font-mono text-[11px] text-ink2 hover:bg-page disabled:opacity-50"
+              onclick={() => exportPng(sess)}
+              disabled={exporting !== 0}
             >
-              CSV
+              {exporting === sess.id ? 'Rendering…' : 'PNG'}
             </button>
             <button
               class="rounded-md border px-2.5 py-1 font-mono text-[11px] {confirmDel === sess.id

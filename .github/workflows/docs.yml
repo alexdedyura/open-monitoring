@@ -38,7 +38,11 @@ jobs:
       - name: Build site
         run: npm run build
 
+      # enablement creates the Pages site on first run, so the repository
+      # does not have to be switched to "GitHub Actions" by hand.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
