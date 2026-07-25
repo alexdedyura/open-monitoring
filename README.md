@@ -12,13 +12,27 @@ install alongside it.
 
 ## Screenshots
 
-| Dashboard | HUD overlay |
-|---|---|
-| ![Dashboard](assets/screenshots/dashboard.png) | ![HUD overlay](assets/screenshots/hud.png) |
+The HUD over a running game — GPU, CPU and memory readouts, FPS with 1% / 0.1%
+lows, and live frame-time and FPS graphs:
 
-| System panel | Recorded session |
+![The HUD overlay on top of a game](assets/screenshots/hud.jpg)
+
+| Live dashboard | Settings and system panel |
 |---|---|
-| ![System panel](assets/screenshots/system.png) | ![Recorded session](assets/screenshots/session.png) |
+| ![Dashboard](assets/screenshots/dashboard.png) | ![Settings and system panel](assets/screenshots/system.png) |
+
+Recordings are listed on their own tab — open one as zoomable charts, or export
+the whole thing as a single image:
+
+![Recorded sessions](assets/screenshots/sessions.png)
+
+<details>
+<summary><b>A recorded session, exported as one PNG</b> — every metric over the
+whole recording, including the moment a game starts.</summary>
+
+![Recorded session exported to PNG](assets/screenshots/session-export.png)
+
+</details>
 
 ## Features
 
@@ -35,9 +49,10 @@ install alongside it.
 - **Storage** — live read/write speed and free space per volume, and per drive
   the model, bus, health, SMART temperature, remaining life and power-on hours.
 - **System panel** — a hardware summary at a glance: CPU, GPU, RAM modules,
-  motherboard, page file, OS and uptime, drives.
+  motherboard, OS and uptime, drives.
 - **Recording** — capture every metric for 1–4 hours, then browse it as
-  zoomable charts (drag to zoom, double-click to reset) or export to CSV.
+  zoomable charts (drag to zoom, double-click to reset) or export every chart
+  as one shareable PNG snapshot.
 - **HUD overlay** — a compact frameless overlay styled like a classic in-game
   OSD: sections per hardware with per-row toggles, FPS and frame-time
   sparklines, adjustable opacity and screen anchoring. Works over windowed and
