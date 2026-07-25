@@ -1,0 +1,50 @@
+---
+title: Metric sources
+description: How Open Monitoring collects its data — four sources, no overlap.
+sidebar:
+  icon: database
+---
+
+The collector samples every source on a configurable interval (250 ms – 5 s),
+keeps an in-memory ring buffer so charts open already populated, and pushes
+each sample to the frontend as an event. Four sources feed a sample, each
+covering what the others cannot:
+
+| Source | Provides | Library |
+|---|---|---|
+| System | CPU load, memory, disk and network throughput | [gopsutil v4](https://github.com/shirou/gopsutil) (pure Go) |
+| Sensor engine | GPU telemetry (all vendors), CPU package temperature and power, motherboard and memory modules (SMBIOS), drive wear | [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) 0.9.6 (MPL-2.0) |
+| PresentMon | frame times of the foreground app | [Intel PresentMon](https://github.com/GameTechDev/PresentMon) |
+| WMI | drive identity and SMART counters, CPU boost clock | [yusufpapurcu/wmi](https://github.com/yusufpapurcu/wmi) |
+
+Anything the sensor engine can answer is asked of it rather than of WMI —
+SMBIOS needs no privileges and no second query path. WMI is left with the two
+things the sensor engine does not cover: physical-drive identity (bus, media
+type, health, power-on hours) and a CPU clock that works when the
+[PawnIO driver](/pawnio) is not installed.
+
+## Why there is a C# sensor engine
+
+LibreHardwareMonitor has no Go equivalent: it wraps NVAPI, AMD ADL, Intel
+IGCL, SMBIOS and a kernel driver to reach sensors Windows exposes through no
+public API. Reimplementing that is not realistic, so the sensor engine is a
+small C# worker that streams one JSON reading per interval on stdout.
+
+It is published **self-contained** and compiled into the Go binary, then
+unpacked to `%LOCALAPPDATA%\OpenMonitoring\bin\` on first use under a
+content-hashed name. That is what keeps the distributable a single file while
+still not requiring .NET on the machine that runs it. The same applies to
+PresentMon.
+
+The engine also owns all knowledge of *sensor names* — LibreHardwareMonitor
+reports vendor-specific labels like `CPU Package`, `Core (Tctl/Tdie)` or
+`GPU Hot Spot`, and choosing between them belongs next to the sensor objects
+rather than in the Go consumer.
+
+## FPS capture
+
+Frame times come from Intel PresentMon's ETW capture of present events, which
+requires administrator elevation — one of the reasons the app elevates at
+launch. From the raw frame times the app derives current and average FPS plus
+the 1% low and 0.1% low percentiles shown in the HUD and recorded into
+sessions.

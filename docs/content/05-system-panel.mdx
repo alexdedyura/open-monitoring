@@ -1,0 +1,26 @@
+---
+title: System panel
+description: A hardware summary of the machine — CPU, GPU, RAM, board, OS and drives.
+sidebar:
+  icon: cpu
+---
+
+The System tab is a hardware summary of the machine, with brand logos
+(Intel / AMD / NVIDIA via
+[simple-icons](https://github.com/simple-icons/simple-icons)):
+
+- **CPU** — model and base clock.
+- **GPU** — model as reported by the vendor API.
+- **RAM modules** — type, speed and vendor per module, read from SMBIOS
+  (no elevation or extra query path needed).
+- **Page file** — size and location.
+- **Motherboard** — vendor and model, from SMBIOS.
+- **OS** — Windows edition with hostname and uptime.
+- **Drives** — physical drives with model, bus (NVMe/SATA), media type,
+  health status, and SMART data: temperature, remaining life and power-on
+  hours, from the Windows storage WMI namespace.
+
+Hardware identity comes from the sensor engine where possible (SMBIOS needs no
+privileges), and from WMI for the two things the sensor engine does not cover:
+physical-drive identity and SMART counters. See
+[Metric sources](/metrics) for the full picture.

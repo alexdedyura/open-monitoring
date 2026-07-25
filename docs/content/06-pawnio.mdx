@@ -1,0 +1,49 @@
+---
+title: The PawnIO driver
+description: Why CPU temperature and power need a kernel driver, and why it is PawnIO.
+sidebar:
+  icon: shield
+---
+
+Reading CPU package temperature and power requires **ring-0 access** to the
+processor's model-specific registers (MSRs). There is no driver-free source
+for them on desktop hardware — the ACPI thermal zone some laptops expose
+reports "not supported" there.
+
+## Why not WinRing0
+
+Historically, hardware monitoring tools got MSR access through the
+**WinRing0** driver. Microsoft Defender has classified WinRing0 as a
+vulnerable driver since March 2025
+([CVE-2020-14979](https://nvd.nist.gov/vuln/detail/CVE-2020-14979)) and
+quarantines it on sight.
+
+The sensor library Open Monitoring uses (LibreHardwareMonitorLib 0.9.6)
+dropped WinRing0 entirely in favour of [PawnIO](https://pawnio.eu) — a
+separately installed, open-source (GPL-2.0) kernel driver that runs small
+**sandboxed modules** instead of handing userland arbitrary MSR access.
+
+**Open Monitoring never installs a kernel driver of its own.**
+
+## The install gate
+
+PawnIO is required. When the sensor engine reports the driver missing, the app
+shows an install gate and stays locked until it is present. The gate runs the
+official winget package:
+
+```
+winget install --id namazso.PawnIO --exact --silent
+```
+
+Where winget is unavailable, the official download page is opened instead —
+the app never downloads or executes an installer of its own.
+
+After the install, the app relaunches its sensor engine automatically (the
+sensor library decides only once, at startup, whether the driver exists), and
+the dashboard opens by itself — no restart needed.
+
+## Uninstalling
+
+PawnIO is a regular installed program: remove it from Windows
+**Settings → Apps** or with `winget uninstall namazso.PawnIO`. Open Monitoring
+will show the install gate again on next launch.

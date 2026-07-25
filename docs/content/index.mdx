@@ -1,0 +1,52 @@
+---
+title: Overview
+description: Open-source PC monitoring for Windows — an alternative to MSI Afterburner and FPS Monitor.
+sidebar:
+  icon: home
+---
+
+Live dashboard, recordable sessions with zoomable charts, and a configurable
+always-on-top HUD overlay — free and open source, in a single executable.
+
+**Stack:** Go + [Wails v2](https://wails.io) · Svelte 5 + Tailwind CSS 4 ·
+[uPlot](https://github.com/leeoniya/uPlot)
+
+One build produces **one executable** — the native helpers are compiled into it
+and unpacked at runtime, and nothing has to be installed on the target machine
+(except the [PawnIO driver](/pawnio), offered on first launch).
+
+## Highlights
+
+- **Live dashboard** — CPU (total + per-core), RAM, page file, GPU, VRAM,
+  disk I/O and network as streaming charts with 1m/5m/15m/30m windows, in dark
+  and light themes with colorblind-validated palettes.
+- **GPU telemetry for every vendor** — NVIDIA via NVAPI, AMD via ADL, Intel
+  via IGCL. Load, VRAM, temperature, hot spot, power, clocks and fan — no
+  vendor CLI tool involved.
+- **FPS of the foreground app** — current / average / 1% low / 0.1% low via
+  [Intel PresentMon](https://github.com/GameTechDev/PresentMon) ETW frame
+  capture.
+- **CPU clock, temperature and power** — real boost frequency from Windows
+  performance counters; package temperature and power through the
+  [PawnIO](https://pawnio.eu) driver.
+- **Storage monitoring** — per-volume live read/write speeds and space usage,
+  plus physical drives with SMART temperature, remaining life and power-on
+  hours.
+- **Recording sessions** — capture every metric for 1–4 hours into SQLite,
+  browse them as zoomable charts or export to CSV.
+- **HUD overlay** — a compact, frameless, always-on-top overlay styled like a
+  classic in-game OSD, with live FPS and frame-time sparklines.
+
+## Where to go next
+
+- [Installation](/installation) — download and first launch.
+- [Dashboard](/dashboard) — the live charts and what they show.
+- [HUD overlay](/hud) — the in-game style OSD.
+- [Recording sessions](/recording) — capture, browse, export.
+- [The PawnIO driver](/pawnio) — why it is required and how it is installed.
+- [Building from source](/building) — for contributors.
+
+## License
+
+Open Monitoring is free software under
+[GPL-3.0](https://github.com/alexdedyura/open-monitoring/blob/main/LICENSE).

@@ -1,0 +1,41 @@
+---
+title: HUD overlay
+description: A compact always-on-top overlay styled like a classic in-game OSD.
+sidebar:
+  icon: layout
+---
+
+One click turns the window into a compact, frameless, always-on-top overlay
+styled like a classic in-game OSD.
+
+## What it shows
+
+Titled sections per hardware, each with per-row toggles:
+
+- **GPU** — load, VRAM, temperature, power, clocks.
+- **CPU** — load, clock, temperature, power.
+- **Memory** — RAM and page file.
+- **Storage** — live read/write speeds.
+- **Network** — throughput.
+- **FPS** — current / average / 1% low / 0.1% low, with live FPS and
+  frame-time **sparklines**.
+
+## Positioning and appearance
+
+- **Screen anchoring** — free drag anywhere, or snap to any corner of the
+  screen.
+- **Opacity control** — from fully opaque to nearly transparent.
+- Every row can be toggled individually, so the HUD shows exactly what you
+  care about and nothing else.
+
+## Game compatibility
+
+The HUD works over **windowed** and **borderless-fullscreen** games — it
+re-asserts its always-on-top status continuously, so games that steal the
+topmost slot do not push it behind.
+
+**Exclusive fullscreen** bypasses any desktop overlay: the frame never passes
+through the desktop compositor, so no window can draw over it without a D3D
+hook. The app explains this before switching. Most modern games offer a
+borderless-fullscreen mode, which behaves identically for gameplay and works
+with the HUD.

@@ -1,0 +1,42 @@
+---
+title: Dashboard
+description: The live dashboard — streaming charts for every metric.
+sidebar:
+  icon: chart-line
+---
+
+The dashboard shows every metric as a streaming chart. Charts open already
+populated: the collector keeps an in-memory ring buffer, so switching to the
+app after it has been running shows history, not an empty graph.
+
+## Metrics
+
+- **CPU** — total load plus a per-core breakdown, and the real boost
+  frequency of the fastest core (read from Windows performance counters, no
+  kernel driver needed).
+- **CPU temperature and power** — package temperature and power draw, read
+  through the [PawnIO driver](/pawnio).
+- **RAM** — usage, plus page file (swap) usage and growth.
+- **GPU** — load, VRAM, temperature, hot spot, power draw, clocks and fan
+  speed. Works for NVIDIA (NVAPI), AMD (ADL) and Intel (IGCL) without any
+  vendor CLI tools.
+- **Disks** — per-volume live read/write speeds and space usage.
+- **Network** — throughput per interface.
+- **FPS** — frame rate of the foreground app via Intel PresentMon: current,
+  average, 1% low and 0.1% low.
+
+## Chart windows
+
+Each chart streams over a selectable time window: **1m / 5m / 15m / 30m**.
+
+## Sampling interval
+
+The collector samples every source on a configurable interval from **250 ms to
+5 s** (Settings tab). A shorter interval gives smoother charts; a longer one
+reduces overhead.
+
+## Themes and scaling
+
+- **Dark and light themes** — both chart palettes are colorblind-validated.
+- **UI scaling** — the interface follows the Windows display scaling by
+  default, or can be pinned to any value from 100% to 200%.

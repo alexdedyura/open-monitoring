@@ -1,0 +1,52 @@
+---
+title: Installation
+description: Download Open Monitoring and get it running in a minute.
+sidebar:
+  icon: download
+---
+
+## Requirements
+
+- Windows 10/11, 64-bit.
+- Administrator rights — the app requests elevation at launch (SMART counters
+  and ETW frame capture need it, same as MSI Afterburner).
+- The [PawnIO](https://pawnio.eu) kernel driver for CPU temperature and power —
+  the app offers a one-click install on first launch, see below.
+
+## Download
+
+Every push to the default branch is built by GitHub Actions and published to
+the rolling
+[**latest** release](https://github.com/alexdedyura/open-monitoring/releases/tag/latest).
+
+Grab `open-monitoring.exe` from there — **one file, no prerequisites**. The
+native helpers (the sensor engine and PresentMon) are compiled into the
+executable and unpacked automatically on first use to
+`%LOCALAPPDATA%\OpenMonitoring\bin\`.
+
+## First launch
+
+1. Run `open-monitoring.exe`. Windows shows a UAC prompt — the app needs
+   administrator rights for SMART data and frame capture.
+2. If the PawnIO driver is not installed yet, the app shows an **install
+   gate** and stays locked until the driver is present. Click install — the
+   gate runs the official winget package:
+
+   ```
+   winget install --id namazso.PawnIO --exact --silent
+   ```
+
+   Where winget is unavailable, the official download page is opened instead;
+   the app never downloads or executes an installer of its own.
+3. Once the driver reports in, the dashboard opens by itself — no restart
+   needed.
+
+The sensor engine takes a few seconds to start reporting, so GPU details may
+appear shortly after the dashboard does.
+
+## Updating
+
+Download the new `open-monitoring.exe` from the
+[latest release](https://github.com/alexdedyura/open-monitoring/releases/tag/latest)
+and replace the old file. Settings and recorded sessions live in
+`%APPDATA%\OpenMonitoring\` and survive updates.

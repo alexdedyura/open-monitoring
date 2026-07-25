@@ -1,0 +1,83 @@
+---
+title: Building from source
+description: Compile Open Monitoring yourself — one command, one executable.
+sidebar:
+  icon: hammer
+---
+
+## Requirements
+
+- **Go 1.25+**
+- **Node.js 18+**
+- **[Wails CLI](https://wails.io/docs/gettingstarted/installation) v2**
+- **.NET 8 SDK** — to compile the sensor engine; end users do not need .NET.
+
+## Build
+
+```powershell
+.\build.ps1
+```
+
+That publishes the C# sensor engine, fetches PresentMon if it is not already
+in `tools/presentmon/`, stages both into `internal/sidecar/bin/`, and runs
+`wails build`. The result is `build/bin/open-monitoring.exe` — around 50 MB,
+with no loose files beside it and no runtime prerequisites.
+
+Use `.\build.ps1 -SkipHelpers` while iterating on Go or frontend code to reuse
+the already-staged helpers.
+
+## Development with hot reload
+
+```powershell
+wails dev
+```
+
+Helpers are picked up straight from `tools/`, so there is no need to re-stage
+them. Note that the manifest requests administrator elevation, so `wails dev`
+triggers a UAC prompt on every rebuild — temporarily set
+`requestedExecutionLevel` to `asInvoker` in
+`build/windows/wails.exe.manifest` for long dev sessions.
+
+## Project layout
+
+```
+main.go                  Wails wiring, nothing else
+internal/app/            the application: bindings, recording, window/HUD control
+internal/metrics/        metric collection
+internal/sidecar/        embeds the helper executables and unpacks them on demand
+internal/store/          session persistence (SQLite)
+tools/lhm-bridge/        the C# sensor engine
+build.ps1                one-command build
+docs/                    this documentation site (Blume)
+```
+
+Every exported method on the app struct becomes a JavaScript binding, so that
+set is effectively the app's API.
+
+## Tests
+
+```powershell
+go vet ./...
+go test ./internal/...
+```
+
+## Continuous integration
+
+Every push to the default branch runs `build.ps1` on `windows-latest` and
+updates the rolling
+[latest release](https://github.com/alexdedyura/open-monitoring/releases/tag/latest)
+with `open-monitoring.exe`.
+
+## This documentation
+
+The docs site lives in `docs/` and is built with
+[Blume](https://github.com/haydenbleasel/blume):
+
+```powershell
+cd docs
+npm install
+npm run dev     # local preview
+npm run build   # static site in docs/dist/
+```
+
+Pushes that touch `docs/` deploy the site to GitHub Pages automatically.

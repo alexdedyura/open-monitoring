@@ -1,0 +1,43 @@
+---
+title: Recording sessions
+description: Capture every metric into SQLite, browse zoomable charts, export CSV.
+sidebar:
+  icon: circle-dot
+---
+
+Open Monitoring can record every metric it collects into a session you can
+review later — useful for benchmarking runs, tracking down thermal throttling,
+or comparing a game's performance before and after a settings change.
+
+## Recording
+
+- Start a recording from the dashboard; every metric from every source is
+  captured — CPU, GPU, memory, disks, network and FPS.
+- Sessions run for **1 to 4 hours** (configurable cap) and stop automatically
+  when the cap is reached.
+- Samples are batched into SQLite transactions, so recording adds negligible
+  overhead on top of normal monitoring.
+
+## Where sessions are stored
+
+Sessions live in a single SQLite database:
+
+```
+%APPDATA%\OpenMonitoring\sessions.db
+```
+
+The store uses a pure-Go SQLite driver
+([modernc.org/sqlite](https://gitlab.com/cznic/sqlite)), so there is no native
+database dependency.
+
+## Browsing a session
+
+Recorded sessions open as the same charts the live dashboard uses:
+
+- **Drag to zoom** into any time range.
+- **Double-click to reset** the zoom.
+
+## Exporting
+
+Any session can be exported to **CSV** for analysis in a spreadsheet or your
+own tooling.

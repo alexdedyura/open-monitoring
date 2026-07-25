@@ -1,0 +1,51 @@
+---
+title: FAQ
+description: Common questions and troubleshooting.
+sidebar:
+  icon: circle-help
+---
+
+## Why does the app ask for administrator rights?
+
+SMART counters and ETW frame capture (FPS) require elevation — the same
+reason MSI Afterburner runs elevated. The manifest requests it up front so
+every feature works without a mid-session restart.
+
+## Why is the app locked behind a driver install screen?
+
+CPU package temperature and power can only be read through a kernel driver,
+and the app deliberately does not bundle one — it relies on the separately
+installed, open-source [PawnIO](/pawnio) driver. The gate offers a one-click
+install via winget and unlocks automatically once the driver reports in.
+
+## The GPU name / sensors show up a few seconds late
+
+The sensor engine takes a few seconds to enumerate hardware on startup. The
+dashboard opens immediately with the system metrics and fills in GPU details
+as soon as the engine reports.
+
+## The HUD is not visible over my game
+
+The HUD works over windowed and borderless-fullscreen games. **Exclusive
+fullscreen** bypasses any desktop overlay — no window can appear over it
+without injecting into the game's renderer, which Open Monitoring does not
+do. Switch the game to borderless fullscreen.
+
+## Where are my settings and recordings stored?
+
+- Settings and the session database: `%APPDATA%\OpenMonitoring\`
+- Unpacked helper executables: `%LOCALAPPDATA%\OpenMonitoring\bin\`
+
+Deleting these folders resets the app completely.
+
+## Does it phone home?
+
+No. The app has no telemetry and makes no network requests of its own. The
+only outbound action is the optional PawnIO install, which goes through
+winget or opens the official download page in your browser.
+
+## Something else is wrong
+
+Open an issue on
+[GitHub](https://github.com/alexdedyura/open-monitoring/issues) with your
+Windows version, hardware (CPU/GPU) and a description of what you saw.
