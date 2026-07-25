@@ -54,16 +54,17 @@ export function resolveSeries(series, theme) {
   return series.map((s) => ({...s, color: pal[s.pkey]}))
 }
 
-// One buffer set holds a series array per chartable key, plus `frameMs` for
-// the HUD frame-time sparkline. The live ring buffers and the recorded-session
-// charts share this shape — appendSample is the single sample→series mapping.
+// One buffer set holds a series array per chartable key. The live ring buffers
+// and the recorded-session charts share this shape — appendSample is the single
+// sample→series mapping. (The HUD's frame-time graph is not here: it runs off
+// the faster frame-rate event, in `fpsBuf`.)
 export function newBuffers() {
   return {
     t: [],
     cpu: [], cpuTemp: [], cpuPow: [], ram: [], swapUsed: [], swapTotal: [],
     gpu: [], gpuTemp: [], gpuPow: [], vram: [],
     diskR: [], diskW: [], netUp: [], netDown: [],
-    fps: [], frameMs: [],
+    fps: [],
   }
 }
 
@@ -86,7 +87,6 @@ export function appendSample(b, s) {
   b.netUp.push(s.net.upBps * 8 / 1e6)
   b.netDown.push(s.net.downBps * 8 / 1e6)
   b.fps.push(s.fps?.cur ?? null)
-  b.frameMs.push(s.fps?.cur ? 1000 / s.fps.cur : null)
 }
 
 // Turn recorded samples into the same buffer shape the live charts use.

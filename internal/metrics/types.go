@@ -64,10 +64,11 @@ type NetMetrics struct {
 // Intel PresentMon. The lows are the conventional gaming metric: the mean of
 // the worst 1% / 0.1% of frames over the sampling window, expressed as FPS.
 type FPSMetrics struct {
-	Cur     float64 `json:"cur"`   // over the last second
-	Avg     float64 `json:"avg"`   // over the 60s window
-	Low1    float64 `json:"low1"`  // 1% low
-	Low01   float64 `json:"low01"` // 0.1% low
+	Cur     float64 `json:"cur"`     // over the last half second
+	Avg     float64 `json:"avg"`     // over the 60s window
+	Low1    float64 `json:"low1"`    // 1% low, 0 until the window holds enough frames
+	Low01   float64 `json:"low01"`   // 0.1% low, same
+	FrameMs float64 `json:"frameMs"` // slowest frame of the last moment, for the graph
 	Process string  `json:"process"`
 }
 

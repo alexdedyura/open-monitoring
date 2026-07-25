@@ -53,7 +53,7 @@ func (a *App) Startup(ctx context.Context) {
 	}
 	a.store = st
 
-	a.collector = metrics.NewCollector(a.cfg.SampleIntervalMs, a.onSample)
+	a.collector = metrics.NewCollector(a.cfg.SampleIntervalMs, a.onSample, a.onFPS)
 	a.collector.Start()
 }
 
@@ -74,4 +74,11 @@ func (a *App) Shutdown(ctx context.Context) {
 func (a *App) onSample(s metrics.Sample) {
 	runtime.EventsEmit(a.ctx, "sample", s)
 	a.record(s)
+}
+
+// onFPS carries frame-rate metrics on their own cadence, several times per
+// sample, so the HUD readout and its graphs keep up with the game. Recording
+// stays on the sample stream: a session is a fixed-interval series.
+func (a *App) onFPS(m *metrics.FPSMetrics) {
+	runtime.EventsEmit(a.ctx, "fps", m)
 }

@@ -36,6 +36,13 @@ const minIntervalMs = 250
 // one hour at the default one-second interval.
 const historyCap = 3600
 
+// fpsInterval is how often the frame-rate readout and the HUD's FPS and
+// frame-time graphs are refreshed. It is deliberately independent of the
+// sampling interval: a full sample reads WMI and the sensor helper and cannot
+// run this often, while FPS is computed from frame times already buffered in
+// memory. At one sample per second the readout was a second behind the game.
+const fpsInterval = 100 * time.Millisecond
+
 // Collector samples every source on a fixed interval, keeps a bounded history
 // for chart hydration, and notifies a subscriber on each new sample.
 type Collector struct {
@@ -45,6 +52,7 @@ type Collector struct {
 	cpuClock *CPUClockSource
 
 	onSample func(Sample)
+	onFPS    func(*FPSMetrics)
 
 	mu      sync.Mutex
 	history []Sample
@@ -59,13 +67,17 @@ type Collector struct {
 
 // NewCollector wires up the sources. Optional ones that are unavailable on
 // this machine start as nil and are simply skipped when sampling.
-func NewCollector(intervalMs int, onSample func(Sample)) *Collector {
+//
+// onFPS, if set, is called on its own faster cadence with frame-rate metrics
+// only — see fpsInterval.
+func NewCollector(intervalMs int, onSample func(Sample), onFPS func(*FPSMetrics)) *Collector {
 	return &Collector{
 		system:    newSystemSampler(),
 		sensors:   StartSensors(),
 		fps:       StartFPS(),
 		cpuClock:  StartCPUClock(),
 		onSample:  onSample,
+		onFPS:     onFPS,
 		interval:  clampInterval(intervalMs),
 		intervalC: make(chan time.Duration, 1),
 	}
@@ -76,6 +88,9 @@ func (c *Collector) Start() {
 	c.cancel = cancel
 	go c.refreshDiskHealth() // prime the cache without delaying startup
 	go c.run(ctx)
+	if c.onFPS != nil && c.fps != nil {
+		go c.runFPS(ctx)
+	}
 }
 
 func (c *Collector) Stop() {
@@ -135,6 +150,31 @@ func (c *Collector) run(ctx context.Context) {
 			if c.onSample != nil {
 				c.onSample(s)
 			}
+		}
+	}
+}
+
+// runFPS pushes frame-rate metrics between samples. Nothing is emitted while
+// no application is presenting, except the one update that clears a readout
+// that has just gone stale — an idle desktop should not wake the frontend ten
+// times a second.
+func (c *Collector) runFPS(ctx context.Context) {
+	ticker := time.NewTicker(fpsInterval)
+	defer ticker.Stop()
+
+	had := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-ticker.C:
+			m := c.fps.Metrics()
+			if m == nil && !had {
+				continue
+			}
+			had = m != nil
+			c.onFPS(m)
 		}
 	}
 }

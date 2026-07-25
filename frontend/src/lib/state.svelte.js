@@ -9,10 +9,19 @@ export const CAP_SECONDS = 1800
 // `live.tick` is the reactive signal that a new sample arrived.
 export const buf = newBuffers()
 
+// The HUD's frame-rate readout and its two graphs run on their own event,
+// which the backend emits several times per sample — a game's frame rate
+// changes far faster than the sampling interval. Same non-reactive deal as
+// `buf`, with `live.fpsTick` as the signal.
+export const FPS_POINTS = 150 // ~15 s at the backend's FPS cadence
+export const fpsBuf = {fps: [], frameMs: []}
+
 export const live = $state({
   ready: false, // backend handshake done (splash gate)
   tick: 0,
   sample: null,
+  fps: null, // freshest frame-rate metrics, ahead of sample.fps
+  fpsTick: 0,
   info: null,
   cfg: null,
   rec: {active: false},
@@ -25,6 +34,22 @@ function pushSample(s) {
   appendSample(buf, s)
   if (buf.t.length > CAP_SECONDS) {
     for (const k in buf) buf[k].shift()
+  }
+}
+
+// A null reading means nothing is presenting any more; the graphs are cleared
+// rather than left holding the last game's frame times.
+function pushFPS(m) {
+  if (!m) {
+    fpsBuf.fps.length = 0
+    fpsBuf.frameMs.length = 0
+    return
+  }
+  fpsBuf.fps.push(m.cur || null)
+  fpsBuf.frameMs.push(m.frameMs || null)
+  if (fpsBuf.fps.length > FPS_POINTS) {
+    fpsBuf.fps.shift()
+    fpsBuf.frameMs.shift()
   }
 }
 
@@ -51,6 +76,11 @@ export async function init() {
     pushSample(s)
     live.sample = s
     live.tick++
+  })
+  EventsOn('fps', (m) => {
+    live.fps = m
+    pushFPS(m)
+    live.fpsTick++
   })
   EventsOn('recording', (r) => {
     live.rec = r

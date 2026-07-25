@@ -45,9 +45,35 @@ type frameTime struct {
 // minute is long enough for 0.1% lows to mean something at typical frame rates.
 const fpsWindow = 60 * time.Second
 
+// curWindow is what "current FPS" averages over. Short enough that the readout
+// reacts to a drop within half a second, long enough that it does not flicker
+// between neighbouring frames.
+const curWindow = 500 * time.Millisecond
+
+// frameGraphWindow is the slice of history behind the frame-time graph point.
+// The HUD refreshes faster than this, so a single slow frame stays visible for
+// two consecutive points instead of being lost between them.
+const frameGraphWindow = 150 * time.Millisecond
+
+// maxFrameMs discards presentation gaps. MsBetweenPresents measures the time
+// since the previous present, so alt-tabbing, minimising or a loading screen
+// produces one "frame" that is seconds long. Left in, that single value is the
+// worst frame in the window and pins the 1% and 0.1% lows to nonsense for the
+// next minute. A frame slower than this is not a rendered frame, it is a gap.
+const maxFrameMs = 1000
+
 // minFramesForeground is how many frames the foreground process must have
 // produced before it is treated as "the game" rather than an idle window.
 const minFramesForeground = 8
+
+// A low is the mean of the worst `frac` share of frames, so it only means
+// something once the window holds enough frames for that share to be more than
+// a single sample. Below these counts the 1% and 0.1% lows would both collapse
+// onto the one worst frame, and the UI is better off showing nothing.
+const (
+	minFramesLow1  = 100
+	minFramesLow01 = 1000
+)
 
 // StartFPS launches PresentMon. It always returns a source; when the helper is
 // missing or cannot start, Metrics simply keeps returning nil.
@@ -163,7 +189,7 @@ func (f *FPSSource) consume(stdout io.Reader) {
 			continue
 		}
 		ms, err := strconv.ParseFloat(strings.TrimSpace(cols[msCol]), 64)
-		if err != nil || ms <= 0 || math.IsNaN(ms) {
+		if err != nil || ms <= 0 || math.IsNaN(ms) || ms > maxFrameMs {
 			continue
 		}
 
@@ -212,32 +238,43 @@ func (f *FPSSource) Metrics() *FPSMetrics {
 	if pid == 0 {
 		return nil
 	}
+	return f.metricsForLocked(pid, now)
+}
 
+// metricsForLocked turns one process's buffered frame times into the numbers
+// the HUD shows.
+func (f *FPSSource) metricsForLocked(pid uint32, now time.Time) *FPSMetrics {
 	frames := f.frames[pid]
+	if len(frames) == 0 {
+		return nil
+	}
 	all := make([]float64, 0, len(frames))
-	var sumAll, sumRecent float64
+	var sumAll, sumRecent, peak float64
 	recent := 0
 
 	for _, fr := range frames {
 		all = append(all, fr.ms)
 		sumAll += fr.ms
-		if now.Sub(fr.at) <= time.Second {
+		if age := now.Sub(fr.at); age <= curWindow {
 			sumRecent += fr.ms
 			recent++
+			if age <= frameGraphWindow && fr.ms > peak {
+				peak = fr.ms
+			}
 		}
 	}
 
-	m := &FPSMetrics{Process: f.names[pid]}
+	m := &FPSMetrics{Process: f.names[pid], FrameMs: round1(peak)}
 	if recent > 0 {
 		m.Cur = round1(1000 / (sumRecent / float64(recent)))
 	}
 	m.Avg = round1(1000 / (sumAll / float64(len(all))))
 
 	sort.Float64s(all) // ascending, so the worst frames are at the end
-	if worst := meanTail(all, 0.01); worst > 0 {
+	if worst := meanTail(all, 0.01); worst > 0 && len(all) >= minFramesLow1 {
 		m.Low1 = round1(1000 / worst)
 	}
-	if worst := meanTail(all, 0.001); worst > 0 {
+	if worst := meanTail(all, 0.001); worst > 0 && len(all) >= minFramesLow01 {
 		m.Low01 = round1(1000 / worst)
 	}
 	return m

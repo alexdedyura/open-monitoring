@@ -20,7 +20,7 @@ func TestCollectorProducesSamples(t *testing.T) {
 		case samples <- s:
 		default: // a slow test must not block the collector
 		}
-	})
+	}, nil)
 	c.Start()
 	defer c.Stop()
 
@@ -62,7 +62,7 @@ func TestCollectorHistoryIsOrdered(t *testing.T) {
 		t.Skip("samples real hardware and spawns helpers")
 	}
 
-	c := NewCollector(250, nil)
+	c := NewCollector(250, nil, nil)
 	c.Start()
 	defer c.Stop()
 
@@ -92,7 +92,7 @@ func TestBridgeSuppliesMachineDescription(t *testing.T) {
 		t.Skip("spawns the sensor helper")
 	}
 
-	c := NewCollector(1000, nil)
+	c := NewCollector(1000, nil, nil)
 	c.Start()
 	defer c.Stop()
 

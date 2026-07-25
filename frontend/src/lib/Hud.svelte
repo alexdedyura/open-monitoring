@@ -1,20 +1,25 @@
 <script>
-  import {live, exitHud, buf} from './state.svelte.js'
+  import {live, exitHud, fpsBuf} from './state.svelte.js'
   import {METRICS, HUD_GROUPS} from './metricDefs.js'
   import Logo from './Logo.svelte'
   import Sparkline from './Sparkline.svelte'
 
   let hover = $state(false)
 
-  // Last ~90 samples feed the sparklines; copied per tick so Svelte sees a new
-  // array (the ring buffers are deliberately non-reactive).
-  const GRAPH_POINTS = 90
+  // The FPS graphs run off the fast frame-rate event, not the sample stream —
+  // copied per tick so Svelte sees a new array (the buffers are deliberately
+  // non-reactive).
   const series = $derived.by(() => {
-    void live.tick
-    return {
-      fps: buf.fps.slice(-GRAPH_POINTS),
-      frameMs: buf.frameMs.slice(-GRAPH_POINTS),
-    }
+    void live.fpsTick
+    return {fps: [...fpsBuf.fps], frameMs: [...fpsBuf.frameMs]}
+  })
+
+  // Every row reads from the sample, but the frame-rate part of it is stale by
+  // up to a full sampling interval — overlay the fresher numbers on top.
+  const shown = $derived.by(() => {
+    void live.tick, live.fpsTick
+    if (!live.sample) return null
+    return live.fps ? {...live.sample, fps: live.fps} : live.sample
   })
 
   // Sections: HUD_GROUPS order, rows filtered by the user's enabled metric set.
@@ -58,7 +63,7 @@
       </button>
     {/if}
 
-    {#if live.sample}
+    {#if shown}
       <div class="min-h-0 flex-1 space-y-2 overflow-hidden pt-1">
         {#each sections as g (g.id)}
           {#if g.id === 'fps'}
@@ -67,7 +72,7 @@
                 <div class="flex items-baseline justify-between gap-4">
                   <span class="text-[15px] font-bold text-white" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">FPS</span>
                   <span class="text-[22px] font-bold leading-6" style="color:{METRICS.fps.color}; text-shadow: 0 1px 2px rgba(0,0,0,.9)">
-                    {METRICS.fps.value(live.sample)}
+                    {METRICS.fps.value(shown)}
                   </span>
                 </div>
               {/if}
@@ -75,7 +80,7 @@
                 <div class="flex items-baseline justify-between gap-4 leading-[17px]">
                   <span class="text-[11px] text-white/60" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">{m.row}</span>
                   <span class="whitespace-nowrap text-[12px] font-semibold text-white" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">
-                    {m.value(live.sample, live.info)}
+                    {m.value(shown, live.info)}
                   </span>
                 </div>
               {/each}
@@ -97,9 +102,9 @@
                   </div>
                 </div>
               {/each}
-              {#if live.sample.fps?.process}
+              {#if shown.fps?.process}
                 <div class="truncate text-[9px] text-white/40" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">
-                  {live.sample.fps.process}
+                  {shown.fps.process}
                 </div>
               {/if}
             </div>
@@ -118,7 +123,7 @@
                     {m.row}
                   </span>
                   <span class="whitespace-nowrap text-[12px] font-semibold text-white" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">
-                    {m.value(live.sample, live.info)}
+                    {m.value(shown, live.info)}
                   </span>
                 </div>
               {/each}
