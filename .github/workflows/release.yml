@@ -43,7 +43,7 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: .\build.ps1
+        run: .\build.ps1 -Installer
 
       - name: Publish to the rolling "latest" release
         uses: softprops/action-gh-release@v2
@@ -53,6 +53,10 @@ jobs:
           body: |
             Automated build of `${{ github.sha }}`.
 
-            Download `open-monitoring.exe` below — a single file, nothing to install
-            (the PawnIO driver is offered on first launch).
-          files: build/bin/open-monitoring.exe
+            - `open-monitoring-amd64-installer.exe` — installer: Start-menu shortcut,
+              uninstaller, and the required PawnIO driver (selected by default).
+            - `open-monitoring.exe` — portable single file, nothing to install;
+              the PawnIO driver is offered on first launch.
+          files: |
+            build/bin/open-monitoring.exe
+            build/bin/open-monitoring-amd64-installer.exe

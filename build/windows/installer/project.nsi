@@ -33,6 +33,7 @@ Unicode true
 ## Include the wails tools
 ####
 !include "wails_tools.nsh"
+!include "LogicLib.nsh"
 
 # The version information for this two must consist of 4 parts
 VIProductVersion "${INFO_PRODUCTVERSION}.0"
@@ -58,6 +59,7 @@ ManifestDPIAware true
 
 !insertmacro MUI_PAGE_WELCOME # Welcome to the installer page.
 # !insertmacro MUI_PAGE_LICENSE "resources\eula.txt" # Adds a EULA page to the installer
+!insertmacro MUI_PAGE_COMPONENTS # App + optional PawnIO driver.
 !insertmacro MUI_PAGE_DIRECTORY # In which folder install page.
 !insertmacro MUI_PAGE_INSTFILES # Installing page.
 !insertmacro MUI_PAGE_FINISH # Finished installation page.
@@ -87,7 +89,9 @@ Function .onInit
    !insertmacro wails.checkArchitecture
 FunctionEnd
 
-Section
+Section "Open Monitoring (required)" SecApp
+    SectionIn RO # The app itself cannot be deselected.
+
     !insertmacro wails.setShellContext
 
     !insertmacro wails.webview2runtime
@@ -104,6 +108,27 @@ Section
 
     !insertmacro wails.writeUninstaller
 SectionEnd
+
+# PawnIO is the kernel driver the app reads CPU package temperature and power
+# through; the app itself refuses to run without it. Installed here through
+# winget from the official namazso.PawnIO package — the installer never
+# downloads binaries itself. Checked by default; a failure is reported but
+# does not abort the install, because the app offers the same install again
+# at first launch.
+Section "PawnIO driver (CPU temperature & power)" SecPawnIO
+    DetailPrint "Installing the PawnIO driver (winget, package namazso.PawnIO)..."
+    nsExec::ExecToLog 'winget install --id namazso.PawnIO --exact --silent --accept-package-agreements --accept-source-agreements'
+    Pop $0
+    ${If} $0 != 0
+        DetailPrint "PawnIO could not be installed automatically (exit code $0)."
+        DetailPrint "It may already be present, or winget is unavailable — the app will offer the install again at first launch."
+    ${EndIf}
+SectionEnd
+
+!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecApp} "The Open Monitoring application."
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecPawnIO} "Open-source kernel driver (pawnio.eu) required by Open Monitoring for CPU temperature and power. Installed system-wide via winget; kept on uninstall because other tools may use it."
+!insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 Section "uninstall"
     !insertmacro wails.setShellContext

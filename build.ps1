@@ -20,6 +20,10 @@
     Reuse the helpers already staged in internal/sidecar/bin and go straight to
     the app build. Useful when iterating on Go or frontend code.
 
+.PARAMETER Installer
+    Also produce the NSIS installer (build/bin/open-monitoring-amd64-installer.exe).
+    Requires makensis on PATH: winget install NSIS.NSIS
+
 .PARAMETER PresentMonVersion
     Which PresentMon release to download when one is not already staged.
 
@@ -29,6 +33,7 @@
 [CmdletBinding()]
 param(
     [switch]$SkipHelpers,
+    [switch]$Installer,
     [string]$PresentMonVersion = '2.5.1'
 )
 
@@ -110,7 +115,15 @@ function Build-App {
         throw 'The Wails CLI is required: go install github.com/wailsapp/wails/v2/cmd/wails@latest'
     }
 
-    & wails build
+    $wailsArgs = @('build')
+    if ($Installer) {
+        if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            throw 'The installer build needs NSIS (makensis) on PATH: winget install NSIS.NSIS'
+        }
+        $wailsArgs += '-nsis'
+    }
+
+    & wails @wailsArgs
     if ($LASTEXITCODE -ne 0) { throw "wails build failed with exit code $LASTEXITCODE" }
 }
 

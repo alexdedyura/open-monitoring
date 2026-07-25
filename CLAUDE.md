@@ -9,6 +9,7 @@ keep the module compiling elsewhere.
 
 ```powershell
 .\build.ps1                # full build → build/bin/open-monitoring.exe (single file)
+.\build.ps1 -Installer     # + NSIS installer (needs makensis; PawnIO = default-on component)
 .\build.ps1 -SkipHelpers   # reuse already-staged helpers (fast Go/frontend iteration)
 wails dev                  # hot reload; bindings dev server at localhost:34115
 go vet ./... ; go test ./internal/...
@@ -88,5 +89,8 @@ Every exported method on `app.App` becomes a frontend binding — Wails generate
   the frontend root — `vite.config.js` has `server.fs.allow: ['..']` for it;
   links are routed to the system browser through `BrowserOpenURL`.
 - CI (`.github/workflows/release.yml`): every push to main/master runs
-  `build.ps1` on windows-latest and updates the rolling `latest` GitHub
-  Release with `open-monitoring.exe`.
+  `build.ps1 -Installer` on windows-latest and updates the rolling `latest`
+  GitHub Release with the portable exe and the NSIS installer. The installer
+  (`build/windows/installer/project.nsi`) has a components page: the app
+  (read-only) + the PawnIO driver via winget, checked by default; uninstall
+  leaves PawnIO in place.

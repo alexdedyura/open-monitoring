@@ -9,5 +9,12 @@
   "author": {
     "name": "Alex Dedyura",
     "email": "alex@dedyura.com"
+  },
+  "info": {
+    "companyName": "Alex Dedyura",
+    "productName": "Open Monitoring",
+    "productVersion": "0.1.0",
+    "copyright": "© 2026 Alex Dedyura. GPL-3.0",
+    "comments": "Open-source PC monitoring for Windows"
   }
 }

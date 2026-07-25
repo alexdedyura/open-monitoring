@@ -8,7 +8,9 @@
 
   const REPO_URL = 'https://github.com/alexdedyura/open-monitoring'
 
-  const html = marked.parse(readme)
+  // The screenshots section is for GitHub: its relative image paths cannot
+  // resolve inside the WebView, and showing the app to itself is pointless.
+  const html = marked.parse(readme.replace(/^## Screenshots\n[\s\S]*?(?=^## )/m, ''))
 
   // All links leave the WebView for the system browser — the app is not a
   // web browser and has no navigation chrome to come back with.
@@ -61,4 +63,7 @@
   .readme :global(table) { border-collapse: collapse; margin: 0.6rem 0; font-size: 0.8rem; }
   .readme :global(th), .readme :global(td) { border: 1px solid var(--color-line); padding: 0.35rem 0.6rem; color: var(--color-ink2); text-align: left; }
   .readme :global(strong) { color: var(--color-ink); }
+  /* Repo-relative images (the header logo) have no base to resolve against
+     in the WebView — the header above already shows the logo. */
+  .readme :global(img) { display: none; }
 </style>
