@@ -309,7 +309,9 @@ func (a *App) SetHudMode(on bool) {
 		runtime.WindowSetSize(a.ctx, a.cfg.Hud.W, a.cfg.Hud.H)
 		x, y := a.hudPosition()
 		runtime.WindowSetPosition(a.ctx, x, y)
+		hudTopmostOn() // keep re-asserting topmost over borderless games
 	} else {
+		hudTopmostOff()
 		if a.cfg.Hud.Anchor == "free" {
 			a.cfg.Hud.X, a.cfg.Hud.Y = runtime.WindowGetPosition(a.ctx)
 		}
