@@ -1,0 +1,124 @@
+---
+title: Stress test
+description: Burn in the CPU, memory, GPU and storage, together or one at a time.
+sidebar:
+  icon: flame
+---
+
+Monitoring only tells you half the story: an idle machine looks fine no matter
+what is wrong with it. The **Stress test** tab loads each subsystem to its
+sustained limit while the usual sensors keep recording, so you can see the
+temperature it settles at, the clock it holds, and whether the memory stays
+correct under pressure.
+
+Use it to validate a new build, check a cooler after a repaste, confirm an
+overclock or an undervolt is stable, or find out which component is throttling
+first.
+
+**A stress test drives the machine well past any normal workload.** Expect
+maximum fan noise, a hot case and full power draw. Stop the run if temperatures
+keep climbing rather than levelling off — and note that the storage test writes
+several gigabytes per round, which counts against an SSD's endurance.
+
+## Running a test
+
+Each of the four nodes has its own **Start** button, and the **select**
+checkbox decides whether "Run selected" includes it. So you can load a single
+component to isolate a problem, or everything at once for a worst-case power
+and thermal test.
+
+Duration is a preset — 1, 5, 10 or 30 minutes, or 1 hour — or **Custom**, where
+you enter the minutes yourself. Setting the custom value to `0` runs until you
+press Stop, which is what an overnight burn-in wants.
+
+Jobs are independent: starting a second node while the first is running adds it
+without resetting the first one's deadline, and **Stop** works per node or on
+everything at once. A run keeps going while you look at other tabs — the header
+shows an amber dot while anything is loaded.
+
+## What each node does
+
+### Processor
+
+A single kernel would only light up part of a core: a pure floating-point loop
+leaves the integer units idle, and the chip settles at a clock no real workload
+produces. So every thread rotates through the whole menu in short slices, with
+the threads deliberately out of phase with each other:
+
+- **Wide fused multiply-add** — AVX-512 where the CPU has it (opt-in, since it
+  drops the all-core clock hard on many parts) or AVX2, in hand-written
+  assembly with eight independent accumulators so the FMA units are limited by
+  throughput rather than latency. This is where the reported GFLOPS comes from.
+- **AES-NI**, and through GCM the carry-less multiplier.
+- **The SHA-2 extensions**.
+- **A serial integer dependency chain** — multiply, rotate and population
+  count with no instruction-level parallelism to hide behind.
+- **1024-bit modular exponentiation** — long chains of full-width multiplies.
+- **A random pointer chase** over 24 MB, past L2 and into memory, which heats
+  the uncore rather than the cores.
+- **The transcendental library**.
+
+Thread count defaults to one per logical core and can be lowered to test a
+subset.
+
+### Memory
+
+Claims a share of the *free* memory (25–90%; the point is to fill what is free,
+not to push the machine into the page file), then loops over three phases:
+
+1. Write an address-derived checkerboard pattern — the polarity alternates
+   between neighbouring words, so coupling faults between adjacent rows have
+   somewhere to show up, and mixing the address in means a stuck line or a
+   mis-decoded row is caught too.
+2. Verify it, invert every word (the timed read-and-write sweep that produces
+   the bandwidth figure), then verify the inverse.
+3. Walk a random cycle through the region to measure loaded access latency.
+
+Any mismatch is counted as a **fault**. A non-zero fault count means the memory
+is not stable at its current settings — this is the one part of the app that
+finds an actual defect rather than a temperature.
+
+### Graphics
+
+Runs OpenCL compute kernels on the GPU. There is nothing to install: the
+kernels are compiled by your display driver at run time, through the
+`OpenCL.dll` that NVIDIA, AMD and Intel all ship with their drivers.
+
+Three things are stressed, because they fail for different reasons:
+
+- **The shader array**, with a dense fused multiply-add loop — heat and power.
+- **The memory interface**, by streaming all of the claimed VRAM through the
+  chip. This is what an unstable memory overclock trips over, not the ALUs.
+- **Memory capacity**, by filling VRAM to the chosen share (40–95%) and holding
+  a verified pattern in all of it, so a bad cell outside a small working set is
+  still reached.
+
+As with system memory, mismatches are reported as faults. Every dispatch is
+kept to a few hundred milliseconds so Windows' display-driver watchdog never
+fires.
+
+### Storage
+
+Writes a test file of 1–16 GB to the drive you choose, **unbuffered** — with
+the page cache and the drive's write-back cache bypassed, so the numbers are
+the device's and not the RAM's. Each round alternates:
+
+- large sequential transfers, in both directions;
+- 4 KB random writes, reads and a 70/30 mix, sixteen requests in flight.
+
+Sequential bandwidth and command throughput are separate limits, and NVMe
+drives in particular only get warm — and only run out of SLC cache — under the
+small random writes. Written bytes are shown live, and the test file is deleted
+when the run ends, including when you stop it or close the app mid-test.
+
+## Reading the results
+
+Each card shows what the job is doing right now, its throughput figures, and a
+fault count where the data can be verified. Below them are the temperature and
+power charts, and a **Peaks during this run** panel with the highest CPU and
+GPU temperature, hot spot, clocks, power and fan speed reached since the run
+started.
+
+The number to watch is not the peak but the plateau: a machine that boosts to a
+high clock for thirty seconds and then settles much lower is thermally or power
+limited, and the charts show exactly when it gave up.

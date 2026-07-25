@@ -20,6 +20,26 @@ Titled sections per hardware, each with per-row toggles:
 - **FPS** — current / average / 1% low / 0.1% low, with live FPS and
   frame-time **sparklines**.
 
+## Keyboard shortcuts
+
+Both are registered system-wide, so they work while a game has focus:
+
+| Shortcut | Does |
+|---|---|
+| `Ctrl+Alt+H` | Show or hide the overlay |
+| `Ctrl+Alt+B` | Restart the average and the 1% / 0.1% lows |
+
+The reset is what you press at the start of a run worth measuring — a
+benchmark scene, a new area — so the cumulative numbers describe that and not
+the loading screen before it. The current frame rate and the graphs keep
+running.
+
+Both combinations can be changed in `%APPDATA%\OpenMonitoring\config.json`
+(`hud.hotkeyToggle` and `hud.hotkeyReset`), and accept anything of the form
+`Ctrl+Alt+H`, `Shift+F9` or a bare `F9`. A shortcut without a modifier is
+claimed globally too — a bare `H` would stop the letter reaching any other
+application, including the game.
+
 ## Positioning and appearance
 
 - **Screen anchoring** — free drag anywhere, or snap to any corner of the

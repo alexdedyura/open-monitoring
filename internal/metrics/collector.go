@@ -349,6 +349,13 @@ func (c *Collector) Status() SourceStatus {
 	return st
 }
 
+// ResetFPS restarts the frame-rate average and lows. See FPSSource.Reset.
+func (c *Collector) ResetFPS() {
+	if c.fps != nil {
+		c.fps.Reset()
+	}
+}
+
 // RestartSensors relaunches the sensor helper. Needed after PawnIO is
 // installed: LibreHardwareMonitor decides once, at type initialisation,
 // whether the driver is present, so a running helper never notices it appear.

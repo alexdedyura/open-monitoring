@@ -33,6 +33,8 @@ internal/config/         JSON settings, versioned migrate + Clamp validation
 internal/metrics/        collector.go merges four sources (below)
 internal/sidecar/        go:embed of helper .exes, content-hashed unpack
 internal/store/          SQLite sessions (modernc.org/sqlite, no cgo)
+internal/stress/         burn-in: one job per subsystem, cpu*.go (+ amd64 asm),
+                         ram.go, disk*.go, gpu/opencl_windows.go
 tools/lhm-bridge/        C# sensor helper (LibreHardwareMonitorLib 0.9.6)
 frontend/src/lib/        state.svelte.js (shared $state), metricDefs.js (labels,
                          palette, formatters), chartDefs.js (charts + buffers)
@@ -60,6 +62,17 @@ Every exported method on `app.App` becomes a frontend binding — Wails generate
   dashboard up so dev builds without helpers still run). LHM checks for the
   driver ONCE at type init — after installing, the sensor helper must be
   restarted (`Collector.RestartSensors()`), or it never sees it.
+- **FPS runs on its own clock**: `Collector.runFPS` emits an `fps` event every
+  100 ms, separate from the `sample` stream — the HUD readout and its graphs
+  read that, recording still reads samples. PresentMon's CSV reaches the pipe
+  in buffered bursts, not frame by frame, so every FPS window is measured by
+  walking back over frame *times* (`recentRate`/`recentPeak`), never by arrival
+  timestamps; `at` is only good for deciding a process went quiet
+  (`staleAfter`). Frames over `maxFrameMs` are alt-tab gaps, not frames.
+- **Hotkeys** (`internal/hotkey`): `RegisterHotKey` binds to the *calling
+  thread*, and only that thread's queue gets WM_HOTKEY — hence the locked OS
+  thread and the `GetMessage` loop. Combinations are config strings; a bare key
+  parses fine but is claimed machine-wide, so the defaults carry Ctrl+Alt.
 - **Wails bindings**: the generator does not descend into embedded structs to
   find named types — declare fields directly on the bound struct (see
   `StaticInfo` / `ApplyBridgeInfo`). Embedded structs of primitives are fine.
@@ -75,6 +88,15 @@ Every exported method on `app.App` becomes a frontend binding — Wails generate
   sample→series mapping; the live ring (`state.svelte.js: buf`) and recorded
   sessions share it. Buffers are deliberately non-reactive; `live.tick` is the
   redraw signal.
+- **Stress test**: no cgo is available, so nothing here can link a vendor SDK.
+  CPU vector throughput comes from hand-written `cpu_amd64.s` (AVX-512 and AVX2
+  FMA; `cpu_other.go` keeps non-amd64 building), and the GPU is driven through
+  `OpenCL.dll` — the ICD loader every vendor drops in System32 — called by
+  `syscall` in `opencl_windows.go`, with the kernels compiled by the driver at
+  run time. Keep each GPU dispatch under ~250 ms: Windows resets a display
+  driver that has not returned in two seconds. Disk uses
+  `FILE_FLAG_NO_BUFFERING`, so buffers, lengths *and* offsets must be
+  4 KB-aligned (`alignedBuf`) — otherwise every I/O fails with EINVAL.
 - The sensor helper takes a few seconds to first report — GPU name and PawnIO
   status are unknown at startup; `state.svelte.js` polls `GetStaticInfo` until
   `sensorsOk`.

@@ -25,7 +25,8 @@ export const live = $state({
   info: null,
   cfg: null,
   rec: {active: false},
-  view: 'monitor', // monitor | sessions | settings
+  stress: {running: false, jobs: []},
+  view: 'monitor', // monitor | sessions | stress | settings | about
   hud: false,
   range: 300, // seconds shown in live charts
 })
@@ -82,9 +83,24 @@ export async function init() {
     pushFPS(m)
     live.fpsTick++
   })
+  // The HUD hotkey is handled by the backend, because it fires while a game
+  // has focus; this is how the view finds out it was pressed.
+  EventsOn('hud', (on) => {
+    live.hud = on
+  })
   EventsOn('recording', (r) => {
     live.rec = r
   })
+  // The stress runner only emits while something is loaded, so the panel is
+  // seeded once here — a run started before this window opened stays visible.
+  EventsOn('stress', (s) => {
+    live.stress = s
+  })
+  try {
+    live.stress = await api.GetStressStatus()
+  } catch {
+    // the panel renders its idle state from the default above
+  }
   live.ready = true
   pollInfoUntilSensorsReady()
 }
@@ -132,6 +148,16 @@ export async function installPawnIO() {
     }
   }
   return {message: outcome.message, ok: outcome.started || outcome.openedSite}
+}
+
+// The stress panel drives the runner through these two: both return the fresh
+// status so the UI reacts to a click without waiting for the next event tick.
+export async function startStress(opts) {
+  live.stress = await api.StartStress(opts)
+}
+
+export async function stopStress(targets = []) {
+  live.stress = await api.StopStress(targets)
 }
 
 export async function saveConfig(cfg) {

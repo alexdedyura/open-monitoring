@@ -15,8 +15,10 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"open-monitoring/internal/config"
+	"open-monitoring/internal/hotkey"
 	"open-monitoring/internal/metrics"
 	"open-monitoring/internal/store"
+	"open-monitoring/internal/stress"
 )
 
 // App holds everything with a lifetime longer than a single call.
@@ -26,6 +28,7 @@ type App struct {
 	cfg       config.Config
 	collector *metrics.Collector
 	store     *store.Store
+	stress    *stress.Runner
 
 	// The expensive half of the machine description never changes, so it is
 	// gathered once. Wails does not promise that binding calls are serialised,
@@ -36,10 +39,17 @@ type App struct {
 	recMu sync.Mutex
 	rec   *recording
 
-	win window // dashboard/HUD geometry, guarded by its own mutex
+	win     window // dashboard/HUD geometry, guarded by its own mutex
+	hotkeys *hotkey.Manager
 }
 
-func New() *App { return &App{} }
+// New builds the app. The stress runner is created here rather than in Startup
+// because the frontend may ask for its status before the window is ready.
+func New() *App {
+	a := &App{}
+	a.stress = stress.NewRunner(a.emitStress)
+	return a
+}
 
 // Startup is wired to Wails' OnStartup. A failure to open the session database
 // is not fatal: the app still monitors, it just cannot record.
@@ -55,12 +65,33 @@ func (a *App) Startup(ctx context.Context) {
 
 	a.collector = metrics.NewCollector(a.cfg.SampleIntervalMs, a.onSample, a.onFPS)
 	a.collector.Start()
+
+	a.registerHotkeys()
+}
+
+// registerHotkeys claims the two system-wide shortcuts. A combination another
+// application already owns cannot be claimed, and that is not worth failing
+// startup over — the app logs it and runs without that one.
+func (a *App) registerHotkeys() {
+	keys, errs := hotkey.Register([]hotkey.Binding{
+		{Combo: a.cfg.Hud.HotkeyToggle, Do: a.ToggleHud},
+		{Combo: a.cfg.Hud.HotkeyReset, Do: a.ResetFPSStats},
+	})
+	for _, err := range errs {
+		runtime.LogWarningf(a.ctx, "hotkey not registered: %v", err)
+	}
+	a.hotkeys = keys
 }
 
 // Shutdown is wired to Wails' OnShutdown. Stopping the recording first flushes
-// whatever is still buffered.
+// whatever is still buffered, and stopping the stress runner gives the disk job
+// time to delete its multi-gigabyte test file.
 func (a *App) Shutdown(ctx context.Context) {
 	a.StopRecording()
+	a.hotkeys.Stop()
+	if a.stress != nil {
+		a.stress.StopAll()
+	}
 	if a.collector != nil {
 		a.collector.Stop()
 	}

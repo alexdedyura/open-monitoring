@@ -55,6 +55,11 @@ const curWindow = 500 * time.Millisecond
 // two consecutive points instead of being lost between them.
 const frameGraphWindow = 150 * time.Millisecond
 
+// staleAfter is how long the newest frame may be before the process counts as
+// no longer presenting. It has to clear the gap between two of PresentMon's
+// buffered writes, which at a low frame rate is around a second.
+const staleAfter = 3 * time.Second
+
 // maxFrameMs discards presentation gaps. MsBetweenPresents measures the time
 // since the previous present, so alt-tabbing, minimising or a loading screen
 // produces one "frame" that is seconds long. Left in, that single value is the
@@ -91,6 +96,28 @@ func (f *FPSSource) Running() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.running
+}
+
+// Reset restarts the average and the lows. They are cumulative over a minute
+// of play, so after a loading screen or a settings change they describe a run
+// the user is no longer interested in.
+//
+// The last half second of frames survives, because the current frame rate and
+// the frame-time graph are not what is being reset — dropping those too would
+// blank the readout and punch a hole in the graph on every press.
+func (f *FPSSource) Reset() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	for pid, frames := range f.frames {
+		var sum float64
+		keep := 0
+		for i := len(frames) - 1; i >= 0 && sum < float64(curWindow.Milliseconds()); i-- {
+			sum += frames[i].ms
+			keep++
+		}
+		f.frames[pid] = append([]frameTime(nil), frames[len(frames)-keep:]...)
+	}
 }
 
 func (f *FPSSource) Stop() {
@@ -234,7 +261,7 @@ func (f *FPSSource) Metrics() *FPSMetrics {
 
 	f.pruneLocked(now)
 
-	pid := f.pickProcessLocked(foreground, self)
+	pid := f.pickProcessLocked(foreground, self, now)
 	if pid == 0 {
 		return nil
 	}
@@ -248,25 +275,23 @@ func (f *FPSSource) metricsForLocked(pid uint32, now time.Time) *FPSMetrics {
 	if len(frames) == 0 {
 		return nil
 	}
-	all := make([]float64, 0, len(frames))
-	var sumAll, sumRecent, peak float64
-	recent := 0
+	// The newest frame has to be recent, or this process is not presenting any
+	// more — a paused game, a closed one, or a window that went to the tray.
+	if now.Sub(frames[len(frames)-1].at) > staleAfter {
+		return nil
+	}
 
+	all := make([]float64, 0, len(frames))
+	var sumAll float64
 	for _, fr := range frames {
 		all = append(all, fr.ms)
 		sumAll += fr.ms
-		if age := now.Sub(fr.at); age <= curWindow {
-			sumRecent += fr.ms
-			recent++
-			if age <= frameGraphWindow && fr.ms > peak {
-				peak = fr.ms
-			}
-		}
 	}
 
-	m := &FPSMetrics{Process: f.names[pid], FrameMs: round1(peak)}
-	if recent > 0 {
-		m.Cur = round1(1000 / (sumRecent / float64(recent)))
+	m := &FPSMetrics{
+		Process: f.names[pid],
+		Cur:     round1(recentRate(frames, curWindow)),
+		FrameMs: round1(recentPeak(frames, frameGraphWindow)),
 	}
 	m.Avg = round1(1000 / (sumAll / float64(len(all))))
 
@@ -278,6 +303,50 @@ func (f *FPSSource) metricsForLocked(pid uint32, now time.Time) *FPSMetrics {
 		m.Low01 = round1(1000 / worst)
 	}
 	return m
+}
+
+// freshLocked reports whether a process has presented recently enough to still
+// be considered running.
+func (f *FPSSource) freshLocked(pid uint32, now time.Time) bool {
+	frames := f.frames[pid]
+	return len(frames) > 0 && now.Sub(frames[len(frames)-1].at) <= staleAfter
+}
+
+// recentRate is the frame rate over the last `window` worth of rendered
+// frames, walking back from the newest one.
+//
+// The window is measured in frame times, not in arrival times, and that is the
+// whole point. PresentMon writes CSV to a pipe, which the C runtime buffers:
+// rows do not trickle out frame by frame, they land in bursts of a few hundred
+// at a time. Windowing on arrival left the readout empty between bursts —
+// hence a counter that sat at zero and then jumped — even though the frames
+// for that moment were merely still in transit.
+func recentRate(frames []frameTime, window time.Duration) float64 {
+	budget := float64(window.Milliseconds())
+	var sum float64
+	n := 0
+	for i := len(frames) - 1; i >= 0 && sum < budget; i-- {
+		sum += frames[i].ms
+		n++
+	}
+	if n == 0 || sum <= 0 {
+		return 0
+	}
+	return 1000 / (sum / float64(n))
+}
+
+// recentPeak is the slowest of those same frames — one point of the frame-time
+// graph, so that a stutter is visible rather than averaged away.
+func recentPeak(frames []frameTime, window time.Duration) float64 {
+	budget := float64(window.Milliseconds())
+	var sum, peak float64
+	for i := len(frames) - 1; i >= 0 && sum < budget; i-- {
+		sum += frames[i].ms
+		if frames[i].ms > peak {
+			peak = frames[i].ms
+		}
+	}
+	return peak
 }
 
 // pruneLocked drops frames older than the window and forgets processes that
@@ -302,8 +371,13 @@ func (f *FPSSource) pruneLocked(now time.Time) {
 // pickProcessLocked chooses whose frame rate to report. The foreground window
 // wins when it is actually rendering; otherwise the busiest presenter does,
 // which covers a game running while its launcher holds focus.
-func (f *FPSSource) pickProcessLocked(foreground, self uint32) uint32 {
-	if foreground != 0 && foreground != self && len(f.frames[foreground]) >= minFramesForeground {
+//
+// "Actually rendering" means recently, not ever: a paused game keeps its
+// frames in the window for a minute, and without the freshness test it would
+// go on winning the choice while a second application rendered away unseen.
+func (f *FPSSource) pickProcessLocked(foreground, self uint32, now time.Time) uint32 {
+	if foreground != 0 && foreground != self &&
+		len(f.frames[foreground]) >= minFramesForeground && f.freshLocked(foreground, now) {
 		return foreground
 	}
 
@@ -313,7 +387,7 @@ func (f *FPSSource) pickProcessLocked(foreground, self uint32) uint32 {
 	best, bestPID := 0, uint32(0)
 	for pid, frames := range f.frames {
 		name := strings.ToLower(f.names[pid])
-		if pid == self || name == "dwm" || name == "explorer" {
+		if pid == self || name == "dwm" || name == "explorer" || !f.freshLocked(pid, now) {
 			continue
 		}
 		if len(frames) > best && len(frames) >= minFramesFallback {

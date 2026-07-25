@@ -15,7 +15,7 @@ import (
 
 // currentVersion is bumped whenever a stored file needs fixing up on load.
 // See migrate for what each step does.
-const currentVersion = 8
+const currentVersion = 9
 
 type Config struct {
 	Version          int     `json:"version"`
@@ -36,7 +36,20 @@ type HudConfig struct {
 	W                int      `json:"w"`
 	H                int      `json:"h"`
 	FsAlertDismissed bool     `json:"fsAlertDismissed"` // "exclusive fullscreen hides the HUD" notice
+
+	// System-wide shortcuts, as "Ctrl+Alt+H". They are claimed globally, so
+	// they carry modifiers: a bare letter would be swallowed everywhere on the
+	// machine, including inside the game the HUD is watching.
+	HotkeyToggle string `json:"hotkeyToggle"` // show/hide the overlay
+	HotkeyReset  string `json:"hotkeyReset"`  // restart average and lows
 }
+
+// Hotkey defaults. Ctrl+Alt is free of Windows' own bindings and of the usual
+// in-game ones, and both letters match what they do: HUD and Benchmark.
+const (
+	DefaultHotkeyToggle = "Ctrl+Alt+H"
+	DefaultHotkeyReset  = "Ctrl+Alt+B"
+)
 
 // defaultHudMetrics mirrors a classic in-game OSD: a GPU block, a CPU block,
 // memory, and frame rate, each rendered as a titled section.
@@ -57,13 +70,15 @@ func Default() Config {
 		Theme:            "dark",
 		UiScale:          0, // match Windows
 		Hud: HudConfig{
-			Metrics: defaultHudMetrics(),
-			Opacity: 0.85,
-			Anchor:  "free",
-			X:       40,
-			Y:       40,
-			W:       320,
-			H:       620,
+			Metrics:      defaultHudMetrics(),
+			Opacity:      0.85,
+			Anchor:       "free",
+			X:            40,
+			Y:            40,
+			W:            320,
+			H:            620,
+			HotkeyToggle: DefaultHotkeyToggle,
+			HotkeyReset:  DefaultHotkeyReset,
 		},
 	}
 }
@@ -137,6 +152,15 @@ func Clamp(cfg *Config) {
 	default:
 		cfg.Hud.Anchor = "free"
 	}
+
+	// An empty combination is how a file written before these existed reads,
+	// and also the only way to end up with an unregisterable shortcut.
+	if cfg.Hud.HotkeyToggle == "" {
+		cfg.Hud.HotkeyToggle = DefaultHotkeyToggle
+	}
+	if cfg.Hud.HotkeyReset == "" {
+		cfg.Hud.HotkeyReset = DefaultHotkeyReset
+	}
 }
 
 // migrate fixes up a file written by an older version. Each step is written to
@@ -173,6 +197,9 @@ func migrate(cfg *Config, from int) {
 	// v7 added the dismissible PawnIO prompt; v8 made the driver mandatory,
 	// so the pawnIoPromptDismissed key disappears on the next save — the app
 	// now blocks on the install gate instead of asking politely.
+	//
+	// v9 added the HUD hotkeys. Clamp already fills an empty combination with
+	// the default, so the bump exists only to write the new keys into the file.
 }
 
 func Save(cfg Config) error {
