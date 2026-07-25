@@ -1,9 +1,9 @@
 //go:build !windows
 
-package main
+package app
 
-func hudTopmostOn()  {}
-func hudTopmostOff() {}
+func startTopmostKeeper() {}
+func stopTopmostKeeper()  {}
 
 // ClampToScreen is a no-op outside Windows; the position is used as saved.
 func ClampToScreen(x, y, w, h int) (int, int) { return x, y }

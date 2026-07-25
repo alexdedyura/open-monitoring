@@ -37,8 +37,9 @@ export function palette(theme) {
 // dark set regardless of app theme.
 export const COLORS = PALETTES.dark
 
-const f0 = (v) => (v == null ? '—' : v.toFixed(0))
-const f1 = (v) => (v == null ? '—' : v.toFixed(1))
+// Shared "value or em dash" formatters, used wherever a metric is printed.
+export const f0 = (v) => (v == null ? '—' : v.toFixed(0))
+export const f1 = (v) => (v == null ? '—' : v.toFixed(1))
 
 export function diskTotals(s) {
   let dr = 0, dw = 0
@@ -63,6 +64,12 @@ export const METRICS = {
     row: 'Temperature',
     color: COLORS.gpu,
     value: (s) => (s.gpu?.tempC ? f0(s.gpu.tempC) + ' °C' : '—'),
+  },
+  gpuHotspot: {
+    label: 'GPU hot spot',
+    row: 'Hot spot',
+    color: COLORS.gpu,
+    value: (s) => (s.gpu?.hotspotC ? f0(s.gpu.hotspotC) + ' °C' : '—'),
   },
   gpuClock: {
     label: 'GPU clock',
@@ -213,7 +220,7 @@ export function cleanModel(name) {
 
 // HUD sections in on-screen order; header comes from live hardware names.
 export const HUD_GROUPS = [
-  {id: 'gpu', colorKey: 'gpu', header: (info) => cleanModel(info?.gpuName) || 'GPU', keys: ['gpu', 'gpuTemp', 'gpuClock', 'gpuMemClock', 'gpuPow', 'gpuFan', 'vram']},
+  {id: 'gpu', colorKey: 'gpu', header: (info) => cleanModel(info?.gpuName) || 'GPU', keys: ['gpu', 'gpuTemp', 'gpuHotspot', 'gpuClock', 'gpuMemClock', 'gpuPow', 'gpuFan', 'vram']},
   {id: 'cpu', colorKey: 'cpu', header: (info) => cleanModel(info?.cpuModel) || 'CPU', keys: ['cpu', 'cpuTemp', 'cpuClock', 'cpuPow']},
   {id: 'ram', colorKey: 'ram', header: () => 'Memory', keys: ['ram', 'ramLoad', 'ramSpeed']},
   {id: 'disk', colorKey: 'diskR', header: () => 'Storage', keys: ['diskRead', 'diskWrite']},

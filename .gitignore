@@ -31,10 +31,16 @@ frontend/wailsjs/
 build/bin/
 frontend/package.json.md5
 
+# Helper executables staged by build.ps1 and compiled into the app via
+# go:embed. The directory itself is tracked so the embed directive always
+# resolves, even in a fresh checkout.
+internal/sidecar/bin/*
+!internal/sidecar/bin/.gitkeep
+
 # lhm-bridge (.NET) build output
 tools/lhm-bridge/bin/
 tools/lhm-bridge/obj/
 tools/lhm-bridge/publish/
 
-# PresentMon binary (downloaded from official Intel releases, see README)
+# PresentMon binary (fetched from the official Intel release by build.ps1)
 tools/presentmon/

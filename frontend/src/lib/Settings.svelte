@@ -1,7 +1,6 @@
 <script>
-  import {live, saveConfig, api} from './state.svelte.js'
+  import {live, saveConfig, refreshInfo, api} from './state.svelte.js'
   import {METRICS, HUD_GROUPS} from './metricDefs.js'
-  import {BrowserOpenURL} from '../../wailsjs/runtime/runtime.js'
   import SystemPanel from './SystemPanel.svelte'
   import {onMount} from 'svelte'
 
@@ -9,11 +8,24 @@
   let saved = $state(false)
   let disks = $state([])
 
+  // The save bar reacts to edits: comparing against the applied config is
+  // cheap at this size and spares tracking every field by hand.
+  const dirty = $derived(
+    JSON.stringify($state.snapshot(cfg)) !== JSON.stringify($state.snapshot(live.cfg)),
+  )
+
   onMount(async () => {
     try {
       disks = (await api.GetDiskHealth()) ?? []
     } catch {
       disks = []
+    }
+    // The driver can be installed while the app is running, so re-read the
+    // source status every time this panel is opened.
+    try {
+      await refreshInfo()
+    } catch {
+      // keep whatever was already known
     }
   })
 
@@ -23,20 +35,37 @@
     else cfg.hud.metrics.push(k)
   }
 
-  let needsRestart = $state(false)
-
   async function save() {
     await saveConfig($state.snapshot(cfg))
-    needsRestart = await api.RestartPending()
     saved = true
     setTimeout(() => (saved = false), 2500)
   }
-
 </script>
 
-<div class="grid grid-cols-1 gap-3 p-4 xl:grid-cols-2">
+<!-- Sticky action bar: the Save button is always in view, and lights up as
+     soon as there is something to save. -->
+<div class="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-page/90 px-4 py-2 backdrop-blur">
+  <h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-mut">Settings</h2>
+  <div class="grow"></div>
+  {#if saved}
+    <span class="font-mono text-xs text-ram">Saved ✓</span>
+  {:else if dirty}
+    <span class="font-mono text-[11px] text-vram">unsaved changes</span>
+  {/if}
+  <button
+    class="rounded-md border px-4 py-1.5 font-mono text-xs {dirty
+      ? 'border-ink2 bg-card2 text-ink hover:border-ink'
+      : 'border-line text-mut'}"
+    onclick={save}
+    disabled={!dirty}
+  >
+    Save changes
+  </button>
+</div>
+
+<div class="grid grid-cols-1 gap-3 p-4 lg:grid-cols-2">
   <!-- sampling & recording -->
-  <div class="space-y-4 rounded-lg border border-line bg-card p-4">
+  <div class="space-y-3 rounded-lg border border-line bg-card p-3.5">
     <h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-mut">Sampling &amp; recording</h2>
 
     <label class="flex items-center justify-between gap-4">
@@ -86,117 +115,87 @@
       </select>
     </label>
 
-    <div class="space-y-2 rounded-md border border-line bg-card2/40 p-3">
-      <label class="flex cursor-pointer items-start justify-between gap-4">
-        <span>
-          <span class="text-sm text-ink">CPU temperature and power</span>
-          <span class="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.1em] text-mut">
-            loads a kernel driver
-          </span>
-        </span>
-        <input type="checkbox" class="mt-1 accent-white" bind:checked={cfg.enableCpuSensors} />
-      </label>
-      <p class="text-xs leading-relaxed text-mut">
-        Reading CPU package temperature and power needs ring-0 access, which the
-        <button class="underline hover:text-ink2" onclick={() => BrowserOpenURL('https://github.com/LibreHardwareMonitor/LibreHardwareMonitor')}>LibreHardwareMonitor</button>
-        engine gets through the WinRing0 driver. Microsoft Defender classifies
-        that driver as vulnerable
-        (<button class="underline hover:text-ink2" onclick={() => BrowserOpenURL('https://nvd.nist.gov/vuln/detail/CVE-2020-14979')}>CVE-2020-14979</button>)
-        and quarantines it, so it stays <span class="text-ink2">off</span> by default.
-        Everything else — CPU load, GPU, memory, drives with SMART, network and
-        FPS — works without it.
-      </p>
+    <div class="flex items-center justify-between gap-4 rounded-md border border-line bg-card2/40 px-3 py-2">
+      <span class="text-sm text-ink2">
+        Sensor driver —
+        <button class="underline hover:text-ink" onclick={() => api.OpenPawnIOSite()}>PawnIO</button>
+        {live.info?.pawnIoVersion ?? ''}
+      </span>
+      <span class="shrink-0 font-mono text-[10px] uppercase tracking-[0.1em] text-ram">installed</span>
     </div>
   </div>
 
-  <!-- HUD -->
-  <div class="space-y-4 rounded-lg border border-line bg-card p-4">
+  <!-- HUD: position & opacity -->
+  <div class="space-y-3 rounded-lg border border-line bg-card p-3.5">
     <h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-mut">HUD overlay</h2>
 
-    <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-      <div>
-        <div class="mb-2 text-sm text-ink2">Sections and rows</div>
-        <div class="space-y-3">
-          {#each HUD_GROUPS as g (g.id)}
-            <div>
-              <div class="mb-1.5 flex items-center gap-2">
-                <span class="h-2 w-2 rounded-sm" style="background:{METRICS[g.keys[0]]?.color}"></span>
-                <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-mut">{g.header(live.info)}</span>
-              </div>
-              <div class="flex flex-wrap gap-1.5">
-                {#each g.keys as k (k)}
-                  <button
-                    class="rounded-full border px-2.5 py-1 font-mono text-[11px] {cfg.hud.metrics.includes(k)
-                      ? 'border-ink2 bg-card2 text-ink'
-                      : 'border-line text-mut hover:text-ink2'}"
-                    onclick={() => toggleMetric(k)}
-                  >
-                    {METRICS[k].row}
-                  </button>
-                {/each}
-              </div>
-            </div>
-          {/each}
-        </div>
+    <div>
+      <div class="mb-1.5 text-sm text-ink2">Screen position</div>
+      <div class="flex flex-wrap gap-1.5">
+        {#each [
+          ['free', 'Free (drag)'],
+          ['tl', '↖ Top left'],
+          ['tr', '↗ Top right'],
+          ['bl', '↙ Bottom left'],
+          ['br', '↘ Bottom right'],
+        ] as [val, lbl] (val)}
+          <button
+            class="rounded-full border px-2.5 py-1 font-mono text-[11px] {cfg.hud.anchor === val
+              ? 'border-ink2 bg-card2 text-ink'
+              : 'border-line text-mut hover:text-ink2'}"
+            onclick={() => (cfg.hud.anchor = val)}
+          >
+            {lbl}
+          </button>
+        {/each}
       </div>
+    </div>
 
-      <div class="space-y-4">
+    <label class="block">
+      <div class="mb-1 flex justify-between text-sm text-ink2">
+        <span>Background opacity</span>
+        <span class="font-mono text-xs text-mut">{Math.round(cfg.hud.opacity * 100)}%</span>
+      </div>
+      <input type="range" min="0.2" max="1" step="0.05" class="w-full accent-white" bind:value={cfg.hud.opacity} />
+    </label>
+
+    <p class="text-xs leading-relaxed text-mut">
+      The HUD is a compact always-on-top overlay: drag it anywhere, resize by the
+      edges — position and size are remembered. It stays above windowed and
+      borderless-fullscreen games (exclusive fullscreen hides any overlay).
+    </p>
+  </div>
+
+  <!-- HUD: sections and rows -->
+  <div class="space-y-3 rounded-lg border border-line bg-card p-3.5 lg:col-span-2">
+    <h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-mut">HUD sections and rows</h2>
+    <div class="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2 xl:grid-cols-3">
+      {#each HUD_GROUPS as g (g.id)}
         <div>
-          <div class="mb-1.5 text-sm text-ink2">Screen position</div>
+          <div class="mb-1.5 flex items-center gap-2">
+            <span class="h-2 w-2 rounded-sm" style="background:{METRICS[g.keys[0]]?.color}"></span>
+            <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-mut">{g.header(live.info)}</span>
+          </div>
           <div class="flex flex-wrap gap-1.5">
-            {#each [
-              ['free', 'Free (drag)'],
-              ['tl', '↖ Top left'],
-              ['tr', '↗ Top right'],
-              ['bl', '↙ Bottom left'],
-              ['br', '↘ Bottom right'],
-            ] as [val, lbl] (val)}
+            {#each g.keys as k (k)}
               <button
-                class="rounded-full border px-2.5 py-1 font-mono text-[11px] {cfg.hud.anchor === val
+                class="rounded-full border px-2.5 py-1 font-mono text-[11px] {cfg.hud.metrics.includes(k)
                   ? 'border-ink2 bg-card2 text-ink'
                   : 'border-line text-mut hover:text-ink2'}"
-                onclick={() => (cfg.hud.anchor = val)}
+                onclick={() => toggleMetric(k)}
               >
-                {lbl}
+                {METRICS[k].row}
               </button>
             {/each}
           </div>
         </div>
-
-        <label class="block">
-          <div class="mb-1 flex justify-between text-sm text-ink2">
-            <span>Background opacity</span>
-            <span class="font-mono text-xs text-mut">{Math.round(cfg.hud.opacity * 100)}%</span>
-          </div>
-          <input type="range" min="0.2" max="1" step="0.05" class="w-full accent-white" bind:value={cfg.hud.opacity} />
-        </label>
-        <p class="text-xs leading-relaxed text-mut">
-          The HUD is a compact always-on-top overlay. Drag it anywhere, resize by
-          the edges — position and size are remembered. It stays above windowed
-          and borderless-fullscreen games (exclusive fullscreen hides any overlay).
-        </p>
-      </div>
+      {/each}
     </div>
   </div>
 
   <!-- system info -->
-  <div class="space-y-3 rounded-lg border border-line bg-card p-4 xl:col-span-2">
+  <div class="space-y-3 rounded-lg border border-line bg-card p-3.5 lg:col-span-2">
     <h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-mut">System</h2>
     <SystemPanel {disks} />
-  </div>
-
-  <div class="flex items-center gap-3 xl:col-span-2">
-    <button
-      class="rounded-md border border-line bg-card2 px-4 py-2 font-mono text-xs text-ink hover:border-ink2"
-      onclick={save}
-    >
-      Save changes
-    </button>
-    {#if saved}
-      <span class="font-mono text-xs text-ram">Saved ✓</span>
-    {/if}
-    {#if needsRestart}
-      <span class="font-mono text-xs text-vram">Restart the app to apply the sensor change</span>
-    {/if}
   </div>
 </div>

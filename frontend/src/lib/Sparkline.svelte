@@ -5,7 +5,6 @@
     values = [],
     color = '#e66767',
     height = 42,
-    showValue = true,
     unit = '',
     invert = false, // draw larger values lower (frame time: spikes point down)
     digits = 1,
@@ -101,12 +100,10 @@
 
 <div class="relative w-full" bind:this={box} style="height:{height}px">
   <canvas bind:this={canvas} class="block"></canvas>
-  {#if showValue}
-    <span
-      class="pointer-events-none absolute bottom-0 left-0 text-[9px] leading-none"
-      style="color:{color}; text-shadow: 0 1px 2px rgba(0,0,0,.9)"
-    >
-      {latest == null ? '—' : latest.toFixed(digits)}{unit}
-    </span>
-  {/if}
+  <span
+    class="pointer-events-none absolute bottom-0 left-0 text-[9px] leading-none"
+    style="color:{color}; text-shadow: 0 1px 2px rgba(0,0,0,.9)"
+  >
+    {latest == null ? '—' : latest.toFixed(digits)}{unit}
+  </span>
 </div>

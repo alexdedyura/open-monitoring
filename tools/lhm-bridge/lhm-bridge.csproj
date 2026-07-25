@@ -6,14 +6,24 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AssemblyName>lhm-bridge</AssemblyName>
     <RootNamespace>LhmBridge</RootNamespace>
-    <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>false</SelfContained>
+    <Nullable>enable</Nullable>
     <InvariantGlobalization>true</InvariantGlobalization>
     <DebugType>none</DebugType>
+
+    <!-- Published as one self-contained file so the host app can embed it and
+         run it on machines with no .NET runtime installed. Compression takes
+         it from ~70 MB to ~36 MB; the first launch self-extracts to a temp
+         directory, which costs well under a second. -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
+    <!-- 0.9.6 dropped WinRing0 in favour of PawnIO, so nothing here installs a
+         kernel driver flagged by Defender. See README, "CPU temperature". -->
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
   </ItemGroup>
 
 </Project>

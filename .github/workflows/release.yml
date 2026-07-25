@@ -1,0 +1,58 @@
+# Builds the single-file Windows executable and publishes it to the rolling
+# "latest" GitHub Release on every push to the default branch.
+#
+# The build mirrors a local `.\build.ps1` run: publish the C# sensor bridge,
+# fetch PresentMon, stage both into internal/sidecar/bin, then `wails build`.
+name: release
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create/update the release and upload the asset
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+
+      - name: Build
+        shell: pwsh
+        run: .\build.ps1
+
+      - name: Publish to the rolling "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          body: |
+            Automated build of `${{ github.sha }}`.
+
+            Download `open-monitoring.exe` below — a single file, nothing to install
+            (the PawnIO driver is offered on first launch).
+          files: build/bin/open-monitoring.exe

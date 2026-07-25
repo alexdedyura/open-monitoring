@@ -1,14 +1,12 @@
 <script>
-  // Boot splash: the four entity-color dots assemble, the wordmark fades in.
+  // Boot splash: the logo scales in and pulses, the wordmark fades in.
   // Shown until the backend handshake finishes (plus a short minimum).
-  const DOTS = ['#3987e5', '#d95926', '#199e70', '#c98500']
+  import Logo from './Logo.svelte'
 </script>
 
 <div class="splash flex h-full w-full flex-col items-center justify-center bg-page">
-  <div class="grid grid-cols-2 gap-1.5">
-    {#each DOTS as c, i (c)}
-      <span class="dot h-4 w-4 rounded-[3px]" style="background:{c}; animation-delay:{i * 120}ms"></span>
-    {/each}
+  <div class="mark">
+    <Logo size={72} />
   </div>
   <div class="word mt-5 font-mono text-[13px] uppercase tracking-[0.35em] text-ink2">
     Open&nbsp;Monitoring
@@ -19,11 +17,11 @@
 </div>
 
 <style>
-  .dot {
+  .mark {
     opacity: 0;
-    transform: scale(0.3);
-    animation: dot-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards,
-      dot-pulse 1.8s ease-in-out 0.9s infinite;
+    transform: scale(0.6);
+    animation: mark-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards,
+      mark-pulse 1.8s ease-in-out 0.9s infinite;
   }
 
   .word {
@@ -31,16 +29,16 @@
     animation: word-in 0.6s ease-out 0.35s forwards;
   }
 
-  @keyframes dot-in {
+  @keyframes mark-in {
     to {
       opacity: 1;
       transform: scale(1);
     }
   }
 
-  @keyframes dot-pulse {
+  @keyframes mark-pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.55; }
+    50% { opacity: 0.6; }
   }
 
   @keyframes word-in {
@@ -55,7 +53,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .dot, .word {
+    .mark, .word {
       animation: none;
       opacity: 1;
       transform: none;

@@ -1,13 +1,16 @@
 <script>
   import {onMount} from 'svelte'
   import {fade} from 'svelte/transition'
-  import {live, init, enterHud, toggleTheme, saveConfig} from './lib/state.svelte.js'
+  import {live, init, enterHud, exitHud, toggleTheme, saveConfig} from './lib/state.svelte.js'
   import {WindowMinimise, WindowToggleMaximise, Quit} from '../wailsjs/runtime/runtime.js'
   import Splash from './lib/Splash.svelte'
   import Dashboard from './lib/Dashboard.svelte'
   import Sessions from './lib/Sessions.svelte'
   import Settings from './lib/Settings.svelte'
+  import About from './lib/About.svelte'
   import Hud from './lib/Hud.svelte'
+  import Logo from './lib/Logo.svelte'
+  import PawnIoGate from './lib/PawnIoGate.svelte'
 
   let splashMinDone = $state(false)
   let hudAlert = $state(false)
@@ -19,6 +22,18 @@
   })
 
   const booting = $derived(!live.ready || !splashMinDone)
+
+  // PawnIO is mandatory: once the sensor helper reports the driver missing,
+  // the app is locked behind the install gate. Before the helper's first
+  // reading the state is unknown, so the dashboard shows rather than flashing
+  // the gate at every launch.
+  const gated = $derived(live.info?.sensorsOk && !live.info?.pawnIo)
+
+  // If the driver disappears while the HUD overlay is up, restore the normal
+  // window first — the gate must not render inside a tiny always-on-top strip.
+  $effect(() => {
+    if (gated && live.hud) exitHud()
+  })
 
   // UI scale applies to the main app only; the HUD overlay stays 1:1.
   //
@@ -58,23 +73,21 @@
     {id: 'monitor', label: 'Monitor'},
     {id: 'sessions', label: 'Sessions'},
     {id: 'settings', label: 'Settings'},
+    {id: 'about', label: 'About'},
   ]
 </script>
 
-{#if live.hud}
-  <Hud />
-{:else if booting}
+{#if booting}
   <Splash />
+{:else if gated}
+  <PawnIoGate />
+{:else if live.hud}
+  <Hud />
 {:else}
   <div class="flex h-full flex-col overflow-hidden rounded-lg bg-page" in:fade={{duration: 250}}>
     <header class="drag flex h-10 shrink-0 items-center border-b border-line pl-4">
-      <div class="flex items-center gap-2.5">
-        <div class="grid grid-cols-2 gap-[3px]">
-          <span class="h-[5px] w-[5px] rounded-[1px] bg-cpu"></span>
-          <span class="h-[5px] w-[5px] rounded-[1px] bg-gpu"></span>
-          <span class="h-[5px] w-[5px] rounded-[1px] bg-ram"></span>
-          <span class="h-[5px] w-[5px] rounded-[1px] bg-vram"></span>
-        </div>
+      <div class="flex items-center gap-2">
+        <Logo size={20} />
         <span class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink2">Open Monitoring</span>
       </div>
 
@@ -153,6 +166,8 @@
         <Sessions />
       {:else if live.view === 'settings' && live.cfg}
         <Settings />
+      {:else if live.view === 'about'}
+        <About />
       {/if}
     </main>
   </div>

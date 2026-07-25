@@ -1,6 +1,7 @@
 <script>
   import {live, exitHud, buf} from './state.svelte.js'
   import {METRICS, HUD_GROUPS} from './metricDefs.js'
+  import Logo from './Logo.svelte'
   import Sparkline from './Sparkline.svelte'
 
   let hover = $state(false)
@@ -40,15 +41,10 @@
   >
     <!-- header -->
     <div class="mb-1 flex items-center gap-2">
-      <div class="grid grid-cols-2 gap-[2px]">
-        <span class="h-[4px] w-[4px] rounded-[1px] bg-[#3987e5]"></span>
-        <span class="h-[4px] w-[4px] rounded-[1px] bg-[#d95926]"></span>
-        <span class="h-[4px] w-[4px] rounded-[1px] bg-[#199e70]"></span>
-        <span class="h-[4px] w-[4px] rounded-[1px] bg-[#c98500]"></span>
-      </div>
+      <Logo size={14} />
       <span class="text-[9px] uppercase tracking-[0.16em] text-white/50">Open Monitoring</span>
       {#if live.rec.active}
-        <span class="rec-dot ml-auto h-1.5 w-1.5 rounded-full bg-[#e34948]" title="Recording"></span>
+        <span class="rec-dot ml-auto h-1.5 w-1.5 rounded-full bg-rec" title="Recording"></span>
       {/if}
     </div>
 

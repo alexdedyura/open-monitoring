@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package app
 
 import (
 	"context"
@@ -201,5 +201,5 @@ func (t *topmostKeeper) stop() {
 	}
 }
 
-func hudTopmostOn()  { keeper.start() }
-func hudTopmostOff() { keeper.stop() }
+func startTopmostKeeper() { keeper.start() }
+func stopTopmostKeeper()  { keeper.stop() }

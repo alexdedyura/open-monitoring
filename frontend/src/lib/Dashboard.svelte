@@ -1,6 +1,6 @@
 <script>
   import {live, api} from './state.svelte.js'
-  import {palette, diskTotals} from './metricDefs.js'
+  import {palette, diskTotals, f0, f1} from './metricDefs.js'
   import {CHARTS, resolveSeries} from './chartDefs.js'
   import StatTile from './StatTile.svelte'
   import StreamChart from './StreamChart.svelte'
@@ -44,8 +44,6 @@
   const pal = $derived(palette(theme))
   const s = $derived(live.sample)
   const dsk = $derived(s ? diskTotals(s) : [0, 0])
-  const f0 = (v) => (v == null ? '—' : v.toFixed(0))
-  const f1 = (v) => (v == null ? '—' : v.toFixed(1))
 
   const yMaxByKey = $derived({
     ram: live.info ? live.info.ramTotal / 2 ** 30 : null,

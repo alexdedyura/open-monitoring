@@ -2,8 +2,8 @@
 
 package metrics
 
-// CPUClockSource is Windows-only; elsewhere the clock comes from the optional
-// LibreHardwareMonitor bridge, if it is enabled at all.
+// The performance-counter clock source is Windows-only; elsewhere the clock
+// comes from the sensor helper. See cpuclock_windows.go.
 type CPUClockSource struct{}
 
 func StartCPUClock() *CPUClockSource { return nil }

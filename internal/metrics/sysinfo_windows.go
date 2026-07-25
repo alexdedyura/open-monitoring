@@ -18,18 +18,6 @@ type msftPhysicalDisk struct {
 	Size         uint64
 }
 
-type win32BaseBoard struct {
-	Manufacturer string
-	Product      string
-}
-
-type win32PhysicalMemory struct {
-	Manufacturer     string
-	Speed            uint32
-	Capacity         uint64
-	SMBIOSMemoryType uint16
-}
-
 var mediaNames = map[uint16]string{3: "HDD", 4: "SSD", 5: "SCM"}
 
 var busNames = map[uint16]string{
@@ -38,8 +26,6 @@ var busNames = map[uint16]string{
 }
 
 var healthNames = map[uint16]string{0: "Healthy", 1: "Warning", 2: "Unhealthy"}
-
-var ddrNames = map[uint16]string{20: "DDR", 21: "DDR2", 24: "DDR3", 26: "DDR4", 34: "DDR5"}
 
 // physicalDisks lists physical drives via the Windows Storage WMI namespace,
 // merged with the driver-free SMART counters from the same namespace.
@@ -85,37 +71,6 @@ func physicalDisks() []DiskHealthView {
 		}
 	}
 	return out
-}
-
-func boardName() string {
-	var boards []win32BaseBoard
-	var err error
-	runWMI(func() {
-		err = wmi.Query("SELECT Manufacturer, Product FROM Win32_BaseBoard", &boards)
-	})
-	if err != nil || len(boards) == 0 {
-		return ""
-	}
-	return strings.TrimSpace(boards[0].Manufacturer + " " + boards[0].Product)
-}
-
-func ramInfo() RAMInfo {
-	var mods []win32PhysicalMemory
-	var err error
-	runWMI(func() {
-		err = wmi.Query("SELECT Manufacturer, Speed, Capacity, SMBIOSMemoryType FROM Win32_PhysicalMemory", &mods)
-	})
-	if err != nil || len(mods) == 0 {
-		return RAMInfo{}
-	}
-	info := RAMInfo{
-		Modules:  len(mods),
-		ModuleGB: float64(mods[0].Capacity) / (1 << 30),
-		SpeedMT:  int(mods[0].Speed),
-		Type:     ddrNames[mods[0].SMBIOSMemoryType],
-		Vendor:   strings.TrimSpace(mods[0].Manufacturer),
-	}
-	return info
 }
 
 func isElevated() bool {

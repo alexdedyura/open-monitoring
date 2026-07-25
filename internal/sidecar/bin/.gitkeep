@@ -1,0 +1,2 @@
+# Helper executables are staged here by build.ps1 before the Go build.
+# Kept in git so the go:embed directive in sidecar.go always has a directory.

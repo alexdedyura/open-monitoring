@@ -1,8 +1,21 @@
+// Package metrics samples the machine and hands the app a stream of Samples.
+//
+// Four sources feed a Sample, each covering what the others cannot:
+//
+//   - gopsutil (system.go)   — CPU load, memory, disk and network throughput.
+//     Pure Go, no privileges needed.
+//   - lhm-bridge (sensors.go) — GPU telemetry for every vendor, CPU package
+//     temperature and power, drive wear. A bundled helper process, because
+//     these live behind vendor APIs and a kernel driver.
+//   - PresentMon (fps_*.go)  — frame times of the foreground application.
+//   - WMI (sysinfo_*.go, smart_*.go, cpuclock_*.go) — static machine
+//     description, drive identity, and a driver-free CPU clock.
+//
+// Collector owns their lifecycle and merges their output on a fixed interval.
 package metrics
 
 import (
 	"context"
-	"math"
 	"runtime"
 	"sort"
 	"strings"
@@ -13,85 +26,55 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/mem"
-	gnet "github.com/shirou/gopsutil/v4/net"
 )
 
-// lhmProvider abstracts the two LibreHardwareMonitor sources: the bundled
-// lhm-bridge process (preferred) and the HTTP endpoint of an external LHM app.
-type lhmProvider interface {
-	Latest() *LHMReading
-	Stop()
-}
+// minIntervalMs bounds how fast the app may sample. Below this the WMI and
+// helper reads start overlapping and cost more than the data is worth.
+const minIntervalMs = 250
 
-// Collector samples all metric sources on a fixed interval, keeps an in-memory
-// ring buffer for chart hydration and notifies a subscriber on every sample.
+// historyCap is how many samples are kept for hydrating charts on startup —
+// one hour at the default one-second interval.
+const historyCap = 3600
+
+// Collector samples every source on a fixed interval, keeps a bounded history
+// for chart hydration, and notifies a subscriber on each new sample.
 type Collector struct {
-	mu       sync.Mutex
-	ring     []Sample
-	ringCap  int
-	interval time.Duration
-	onSample func(Sample)
-
-	nvidia   *NvidiaSource
-	lhm      lhmProvider
-	lhmMode  string
+	system   *systemSampler
+	sensors  *SensorSource
 	fps      *FPSSource
 	cpuClock *CPUClockSource
 
-	prevIO    map[string]disk.IOCountersStat
-	prevIOAt  time.Time
-	prevNet   gnet.IOCountersStat
-	prevNetAt time.Time
+	onSample func(Sample)
 
-	usage     map[string]float64 // drive -> used space %; guarded by mu
-	usageAt   time.Time
-	cancel    context.CancelFunc
+	mu      sync.Mutex
+	history []Sample
+
+	interval  time.Duration
 	intervalC chan time.Duration
+	cancel    context.CancelFunc
 
 	diskMu     sync.Mutex
-	diskHealth []DiskHealthView // refreshed off the request path; WMI is slow
+	diskHealth []DiskHealthView
 }
 
-// Options configures which optional sensor sources the collector starts.
-type Options struct {
-	IntervalMs int
-	LHMUrl     string
-	// EnableCpuSensors starts the LibreHardwareMonitor bridge. It loads the
-	// WinRing0 kernel driver, which Defender quarantines as vulnerable, so it
-	// is opt-in and off by default.
-	EnableCpuSensors bool
-}
-
-func NewCollector(opts Options, onSample func(Sample)) *Collector {
-	c := &Collector{
-		ringCap:   3600, // up to 1h of hydration history at 1s
-		interval:  time.Duration(opts.IntervalMs) * time.Millisecond,
+// NewCollector wires up the sources. Optional ones that are unavailable on
+// this machine start as nil and are simply skipped when sampling.
+func NewCollector(intervalMs int, onSample func(Sample)) *Collector {
+	return &Collector{
+		system:    newSystemSampler(),
+		sensors:   StartSensors(),
+		fps:       StartFPS(),
+		cpuClock:  StartCPUClock(),
 		onSample:  onSample,
-		usage:     map[string]float64{},
+		interval:  clampInterval(intervalMs),
 		intervalC: make(chan time.Duration, 1),
-		lhmMode:   "off",
 	}
-	c.nvidia = StartNvidia()
-	c.fps = StartFPS()
-	c.cpuClock = StartCPUClock()
-	if opts.EnableCpuSensors {
-		if path := FindBridge(); path != "" {
-			c.lhm = StartBridge(path)
-			c.lhmMode = "bridge"
-		} else if src := StartLHM(opts.LHMUrl); src != nil {
-			c.lhm = src
-			c.lhmMode = "http"
-		} else {
-			c.lhmMode = "none"
-		}
-	}
-	go c.refreshDiskHealth() // prime the cache without blocking startup
-	return c
 }
 
 func (c *Collector) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancel = cancel
+	go c.refreshDiskHealth() // prime the cache without delaying startup
 	go c.run(ctx)
 }
 
@@ -99,11 +82,8 @@ func (c *Collector) Stop() {
 	if c.cancel != nil {
 		c.cancel()
 	}
-	if c.nvidia != nil {
-		c.nvidia.Stop()
-	}
-	if c.lhm != nil {
-		c.lhm.Stop()
+	if c.sensors != nil {
+		c.sensors.Stop()
 	}
 	if c.fps != nil {
 		c.fps.Stop()
@@ -113,36 +93,45 @@ func (c *Collector) Stop() {
 	}
 }
 
-// SetInterval changes the sampling period on the fly.
+// SetInterval changes the sampling period on the fly. A full channel means a
+// change is already queued, and the newest value is the one that matters.
 func (c *Collector) SetInterval(ms int) {
-	if ms < 250 {
-		ms = 250
-	}
 	select {
-	case c.intervalC <- time.Duration(ms) * time.Millisecond:
+	case c.intervalC <- clampInterval(ms):
 	default:
 	}
 }
 
+func clampInterval(ms int) time.Duration {
+	if ms < minIntervalMs {
+		ms = minIntervalMs
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
 func (c *Collector) run(ctx context.Context) {
-	cpu.Percent(0, true) // prime the delta-based reading
-	t := time.NewTicker(c.interval)
-	defer t.Stop()
+	ticker := time.NewTicker(c.interval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
+
 		case d := <-c.intervalC:
 			c.interval = d
-			t.Reset(d)
-		case <-t.C:
+			ticker.Reset(d)
+
+		case <-ticker.C:
 			s := c.collect()
+
 			c.mu.Lock()
-			c.ring = append(c.ring, s)
-			if len(c.ring) > c.ringCap {
-				c.ring = c.ring[len(c.ring)-c.ringCap:]
+			c.history = append(c.history, s)
+			if len(c.history) > historyCap {
+				c.history = c.history[len(c.history)-historyCap:]
 			}
 			c.mu.Unlock()
+
 			if c.onSample != nil {
 				c.onSample(s)
 			}
@@ -150,136 +139,113 @@ func (c *Collector) run(ctx context.Context) {
 	}
 }
 
-// History returns the buffered samples covering the last `seconds` seconds.
-func (c *Collector) History(seconds int) []Sample {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	cutoff := time.Now().Add(-time.Duration(seconds)*time.Second).UnixMilli()
-	i := sort.Search(len(c.ring), func(i int) bool { return c.ring[i].T >= cutoff })
-	out := make([]Sample, len(c.ring)-i)
-	copy(out, c.ring[i:])
-	return out
-}
-
+// collect merges one reading from every source into a Sample.
 func (c *Collector) collect() Sample {
 	now := time.Now()
 	s := Sample{T: now.UnixMilli()}
 
-	if pc, err := cpu.Percent(0, true); err == nil && len(pc) > 0 {
-		s.CPU.PerCore = make([]float64, len(pc))
-		sum := 0.0
-		for i, v := range pc {
-			s.CPU.PerCore[i] = round1(v)
-			sum += v
-		}
-		s.CPU.Usage = round1(sum / float64(len(pc)))
-	}
+	c.system.sample(&s, now)
 
-	if vm, err := mem.VirtualMemory(); err == nil {
-		s.Mem = MemMetrics{Total: vm.Total, Used: vm.Used, UsedPercent: round1(vm.UsedPercent)}
-	}
-
-	if c.nvidia != nil {
-		s.GPU = c.nvidia.Latest()
-	}
-
-	if c.lhm != nil {
-		if r := c.lhm.Latest(); r != nil {
-			s.CPU.TempC = r.CPUTemp
-			s.CPU.PowerW = r.CPUPower
-			s.CPU.ClockMHz = r.CPUClock
-			if s.GPU == nil && r.GPU != nil {
-				s.GPU = r.GPU // AMD/Intel GPUs surface through LibreHardwareMonitor
+	if c.sensors != nil {
+		if r := c.sensors.Latest(); r != nil {
+			s.CPU.TempC = r.CPU.TempC
+			s.CPU.PowerW = r.CPU.PowerW
+			s.CPU.ClockMHz = r.CPU.ClockMHz
+			if r.GPU != nil {
+				gpu := r.GPU.GPUMetrics
+				s.GPU = &gpu
 			}
 		}
 	}
-	if s.CPU.ClockMHz == 0 && c.cpuClock != nil {
-		s.CPU.ClockMHz = c.cpuClock.MHz() // driver-free fallback
-	}
 
-	c.collectDisks(&s, now)
-	c.collectNet(&s, now)
+	// The helper only reports a clock when PawnIO is installed; performance
+	// counters give the same number without a driver.
+	if s.CPU.ClockMHz == 0 && c.cpuClock != nil {
+		s.CPU.ClockMHz = c.cpuClock.MHz()
+	}
 
 	if c.fps != nil {
 		s.FPS = c.fps.Metrics()
 	}
+
+	if c.system.spaceDue(now) {
+		go c.system.refreshSpace()
+		go c.refreshDiskHealth()
+	}
 	return s
 }
 
-func (c *Collector) collectDisks(s *Sample, now time.Time) {
-	io, err := disk.IOCounters()
-	if err == nil && len(io) > 0 {
-		dt := now.Sub(c.prevIOAt).Seconds()
-		c.mu.Lock()
-		usage := c.usage // refreshed wholesale by refreshUsage; read under lock
-		c.mu.Unlock()
-		for name, cur := range io {
-			d := DiskMetrics{Name: name}
-			if prev, ok := c.prevIO[name]; ok && dt > 0 {
-				d.ReadBps = math.Max(0, float64(cur.ReadBytes-prev.ReadBytes)/dt)
-				d.WriteBps = math.Max(0, float64(cur.WriteBytes-prev.WriteBytes)/dt)
-			}
-			d.UsedPercent = usage[name]
-			s.Disks = append(s.Disks, d)
-		}
-		c.prevIO = io
-		c.prevIOAt = now
-		sort.Slice(s.Disks, func(i, j int) bool { return s.Disks[i].Name < s.Disks[j].Name })
-	}
-
-	if now.Sub(c.usageAt) > 30*time.Second {
-		c.usageAt = now
-		go c.refreshUsage()
-		go c.refreshDiskHealth()
-	}
-}
-
-func (c *Collector) refreshUsage() {
-	parts, err := disk.Partitions(false)
-	if err != nil {
-		return
-	}
-	fresh := map[string]float64{}
-	for _, p := range parts {
-		if u, err := disk.Usage(p.Mountpoint); err == nil {
-			key := p.Device
-			if key == "" {
-				key = p.Mountpoint
-			}
-			fresh[trimSlash(key)] = round1(u.UsedPercent)
-		}
-	}
+// History returns the buffered samples covering the last `seconds` seconds.
+func (c *Collector) History(seconds int) []Sample {
 	c.mu.Lock()
-	c.usage = fresh
-	c.mu.Unlock()
+	defer c.mu.Unlock()
+
+	cutoff := time.Now().Add(-time.Duration(seconds) * time.Second).UnixMilli()
+	i := sort.Search(len(c.history), func(i int) bool { return c.history[i].T >= cutoff })
+
+	out := make([]Sample, len(c.history)-i)
+	copy(out, c.history[i:])
+	return out
 }
 
-func (c *Collector) collectNet(s *Sample, now time.Time) {
-	nio, err := gnet.IOCounters(false)
-	if err != nil || len(nio) == 0 {
-		return
-	}
-	cur := nio[0]
-	dt := now.Sub(c.prevNetAt).Seconds()
-	if !c.prevNetAt.IsZero() && dt > 0 {
-		s.Net.UpBps = math.Max(0, float64(cur.BytesSent-c.prevNet.BytesSent)/dt)
-		s.Net.DownBps = math.Max(0, float64(cur.BytesRecv-c.prevNet.BytesRecv)/dt)
-	}
-	c.prevNet = cur
-	c.prevNetAt = now
+// DiskHealth returns the cached drive list. The WMI queries behind it take
+// seconds on some machines, so they never run on a caller's goroutine — the UI
+// would appear frozen while one was in flight.
+func (c *Collector) DiskHealth() []DiskHealthView {
+	c.diskMu.Lock()
+	defer c.diskMu.Unlock()
+
+	out := make([]DiskHealthView, len(c.diskHealth))
+	copy(out, c.diskHealth)
+	return out
 }
 
-// Static gathers one-time machine info.
+// refreshDiskHealth re-reads drive identity and SMART counters from WMI, then
+// folds in the one field only the sensor helper reports: total bytes written.
+func (c *Collector) refreshDiskHealth() {
+	disks := physicalDisks()
+
+	var wear []StorageHealth
+	if c.sensors != nil {
+		if r := c.sensors.Latest(); r != nil {
+			wear = r.Storage
+		}
+	}
+
+	// WMI and the helper name the same drive differently ("Samsung SSD 990 PRO
+	// 2TB" vs "Samsung SSD 990 PRO"), so match on either containing the other.
+	for i := range disks {
+		model := strings.ToLower(disks[i].Model)
+		for _, w := range wear {
+			name := strings.ToLower(w.Name)
+			if name != "" && (strings.Contains(model, name) || strings.Contains(name, model)) {
+				disks[i].DataWrittenGB = w.DataWrittenGb
+				break
+			}
+		}
+	}
+
+	c.diskMu.Lock()
+	c.diskHealth = disks
+	c.diskMu.Unlock()
+}
+
+// Static gathers the one-time machine description shown in the system panel,
+// plus the current state of each optional source.
 func (c *Collector) Static() StaticInfo {
 	info := StaticInfo{OS: runtime.GOOS}
+
 	if h, err := host.Info(); err == nil {
 		info.OS = h.Platform + " " + h.PlatformVersion
+		info.Hostname = h.Hostname
+		info.BootTime = int64(h.BootTime)
 	}
 	if ci, err := cpu.Info(); err == nil && len(ci) > 0 {
 		info.CPUModel = ci[0].ModelName
+		info.CPUBaseMHz = ci[0].Mhz
 	}
 	if n, err := cpu.Counts(false); err == nil {
-		info.CPUCores = n // physical cores
+		info.CPUCores = n // physical
 	}
 	if n, err := cpu.Counts(true); err == nil {
 		info.CPUThreads = n
@@ -292,77 +258,62 @@ func (c *Collector) Static() StaticInfo {
 			info.Disks = append(info.Disks, trimSlash(p.Device))
 		}
 	}
-	if c.nvidia != nil {
-		info.GPUName = c.nvidia.Name()
-		info.NvidiaSMI = true
-	}
-	if c.lhm != nil {
-		if r := c.lhm.Latest(); r != nil {
-			info.LHMConnected = true
-			if info.GPUName == "" {
-				info.GPUName = r.GPUName
-			}
-		}
-	}
-	info.LHMMode = c.lhmMode
-	info.Board = boardName()
-	info.RAM = ramInfo()
+
 	info.IsAdmin = isElevated()
 	info.OSScale = osScale()
+
+	info.SourceStatus = c.Status()
+	info.ApplyBridgeInfo(c.BridgeInfo())
 	return info
 }
 
-// DiskHealth returns the cached drive list. The underlying WMI queries take
-// seconds on some systems, so they never run on a caller's goroutine — the UI
-// would appear frozen while one was in flight.
-func (c *Collector) DiskHealth() []DiskHealthView {
-	c.diskMu.Lock()
-	defer c.diskMu.Unlock()
-	out := make([]DiskHealthView, len(c.diskHealth))
-	copy(out, c.diskHealth)
+// BridgeInfo returns the parts of the machine description that only the sensor
+// helper knows. They stay empty until it has produced its first reading, which
+// is why they are refreshed rather than captured once with the rest of Static.
+func (c *Collector) BridgeInfo() BridgeInfo {
+	var out BridgeInfo
+	if c.sensors == nil {
+		return out
+	}
+	r := c.sensors.Latest()
+	if r == nil {
+		return out
+	}
+
+	if r.GPU != nil {
+		out.GPUName = r.GPU.Name
+	}
+	if r.System != nil {
+		out.Board = r.System.Board
+		if r.System.Memory != nil {
+			out.RAM = *r.System.Memory
+		}
+	}
 	return out
 }
 
-// refreshDiskHealth re-queries physical drives (model, bus, health, and the
-// driver-free SMART counters) and, when the optional LHM bridge is running,
-// folds in the one field it adds: total bytes written.
-func (c *Collector) refreshDiskHealth() {
-	disks := physicalDisks()
+// Status reports which optional sources are currently delivering data. Unlike
+// Static it is cheap, because the UI polls it: a helper may still have been
+// starting up when the window first asked.
+func (c *Collector) Status() SourceStatus {
+	st := SourceStatus{FPSOK: c.fps != nil && c.fps.Running()}
 
-	var smart []StorageHealth
-	if c.lhm != nil {
-		if r := c.lhm.Latest(); r != nil {
-			smart = r.Storage
-		}
+	if c.sensors == nil {
+		return st
 	}
-	for i := range disks {
-		dm := strings.ToLower(disks[i].Model)
-		for _, s := range smart {
-			sn := strings.ToLower(s.Name)
-			if sn != "" && (strings.Contains(dm, sn) || strings.Contains(sn, dm)) {
-				disks[i].DataWrittenGB = s.DataWrittenGB
-				break
-			}
-		}
+	if r := c.sensors.Latest(); r != nil {
+		st.SensorsOK = true
+		st.PawnIO = r.PawnIO
+		st.PawnIOVersion = r.PawnIOVersion
 	}
-
-	c.diskMu.Lock()
-	c.diskHealth = disks
-	c.diskMu.Unlock()
+	return st
 }
 
-// LHMAlive reports whether the optional CPU-sensor source is delivering data.
-func (c *Collector) LHMAlive() bool {
-	return c.lhm != nil && c.lhm.Latest() != nil
-}
-
-func round1(v float64) float64 {
-	return math.Round(v*10) / 10
-}
-
-func trimSlash(s string) string {
-	for len(s) > 0 && (s[len(s)-1] == '\\' || s[len(s)-1] == '/') {
-		s = s[:len(s)-1]
+// RestartSensors relaunches the sensor helper. Needed after PawnIO is
+// installed: LibreHardwareMonitor decides once, at type initialisation,
+// whether the driver is present, so a running helper never notices it appear.
+func (c *Collector) RestartSensors() {
+	if c.sensors != nil {
+		c.sensors.Restart()
 	}
-	return s
 }

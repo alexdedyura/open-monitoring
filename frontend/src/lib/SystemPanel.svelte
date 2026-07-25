@@ -1,5 +1,6 @@
 <script>
   import {live} from './state.svelte.js'
+  import {cleanModel} from './metricDefs.js'
   import BrandIcon from './BrandIcon.svelte'
 
   let {disks = []} = $props()
@@ -12,33 +13,39 @@
     return null
   }
 
-  function cleanModel(name) {
-    return (name ?? '')
-      .replaceAll('(R)', '')
-      .replaceAll('(TM)', '')
-      .replace(/\s+CPU\s+@.*$/, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim()
-  }
-
   const info = $derived(live.info)
   const gb = (v) => (v / 2 ** 30).toFixed(1)
 
+  // Uptime from the boot timestamp; live.tick keeps it advancing on screen.
+  const uptime = $derived.by(() => {
+    void live.tick
+    if (!info?.bootTime) return ''
+    const s = Math.max(0, Math.floor(Date.now() / 1000 - info.bootTime))
+    const d = Math.floor(s / 86400)
+    const h = Math.floor(s / 3600) % 24
+    const m = Math.floor(s / 60) % 60
+    return d ? `up ${d} d ${h} h` : `up ${h} h ${m} min`
+  })
+
   const cards = $derived.by(() => {
     if (!info) return []
+    const swap = live.sample?.mem
     const out = [
       {
         icon: vendorOf(info.cpuModel) ?? 'cpu',
         label: 'Processor',
         name: cleanModel(info.cpuModel),
-        sub: `${info.cpuCores} cores · ${info.cpuThreads} threads`,
+        sub: [
+          `${info.cpuCores} cores · ${info.cpuThreads} threads`,
+          info.cpuBaseMhz ? `base ${(info.cpuBaseMhz / 1000).toFixed(1)} GHz` : '',
+        ].filter(Boolean).join(' · '),
       },
       {
         icon: vendorOf(info.gpuName) ?? 'gpu',
         label: 'Graphics',
         name: cleanModel(info.gpuName) || 'Not detected',
         sub: live.sample?.gpu?.memTotalMb
-          ? `${(live.sample.gpu.memTotalMb / 1024).toFixed(0)} GB VRAM · ${info.nvidiaSmi ? 'nvidia-smi' : 'LibreHardwareMonitor'}`
+          ? `${(live.sample.gpu.memTotalMb / 1024).toFixed(0)} GB VRAM`
           : '',
       },
       {
@@ -50,6 +57,12 @@
           : '',
       },
       {
+        icon: 'ram',
+        label: 'Page file',
+        name: swap?.swapTotal ? `${gb(swap.swapUsed)} / ${gb(swap.swapTotal)} GB` : '—',
+        sub: swap?.swapTotal ? 'in use / current size' : 'no page file',
+      },
+      {
         icon: 'board',
         label: 'Motherboard',
         name: info.board || 'Unknown',
@@ -59,7 +72,11 @@
         icon: 'windows',
         label: 'System',
         name: info.os,
-        sub: info.isAdmin ? 'running as administrator' : 'standard privileges',
+        sub: [
+          info.hostname,
+          uptime,
+          info.isAdmin ? 'administrator' : 'standard privileges',
+        ].filter(Boolean).join(' · '),
       },
     ]
     for (const d of disks) {

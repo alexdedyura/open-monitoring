@@ -4,10 +4,10 @@ package metrics
 
 import (
 	"bufio"
+	"io"
 	"math"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,233 +16,278 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"open-monitoring/internal/sidecar"
 )
 
-// FPSSource streams frame times from Intel PresentMon (--output_stdout) and
-// aggregates them per process. FPS is reported for the foreground window's
-// process. Needs elevation (ETW trace session) — without it the spawn fails
-// and FPS metrics simply stay absent.
+// FPSSource measures frame rate the way overlays do: by consuming the present
+// events Windows already emits, rather than hooking the game. Intel PresentMon
+// turns those ETW events into a CSV stream on stdout; this type keeps a window
+// of recent frame times per process and reports on the foreground one.
+//
+// The ETW trace session needs administrator rights. Without them PresentMon
+// fails to start and FPS metrics stay absent — everything else keeps working.
 type FPSSource struct {
-	mu     sync.Mutex
-	rings  map[uint32]*frameRing
-	names  map[uint32]string
-	cmd    *exec.Cmd
-	closed bool
+	mu      sync.Mutex
+	frames  map[uint32][]frameTime // pid -> recent frames
+	names   map[uint32]string      // pid -> process name
+	cmd     *exec.Cmd
+	running bool
+	closed  bool
 }
 
-type frameEntry struct {
+type frameTime struct {
 	at time.Time
 	ms float64
 }
 
-type frameRing struct {
-	entries []frameEntry
-}
-
+// fpsWindow is how much history the averages and lows are computed over. A
+// minute is long enough for 0.1% lows to mean something at typical frame rates.
 const fpsWindow = 60 * time.Second
 
-// FindPresentMon looks next to the app executable, then in the repo tree.
-func FindPresentMon() string {
-	candidates := []string{}
-	if exe, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "PresentMon.exe"))
+// minFramesForeground is how many frames the foreground process must have
+// produced before it is treated as "the game" rather than an idle window.
+const minFramesForeground = 8
+
+// StartFPS launches PresentMon. It always returns a source; when the helper is
+// missing or cannot start, Metrics simply keeps returning nil.
+func StartFPS() *FPSSource {
+	f := &FPSSource{
+		frames: map[uint32][]frameTime{},
+		names:  map[uint32]string{},
 	}
-	if wd, err := os.Getwd(); err == nil {
-		candidates = append(candidates, filepath.Join(wd, "tools", "presentmon", "PresentMon.exe"))
-	}
-	for _, c := range candidates {
-		if st, err := os.Stat(c); err == nil && !st.IsDir() {
-			return c
-		}
-	}
-	return ""
+	go f.run()
+	return f
 }
 
-func StartFPS() *FPSSource {
-	path := FindPresentMon()
-	if path == "" {
-		return nil
-	}
-	f := &FPSSource{rings: map[uint32]*frameRing{}, names: map[uint32]string{}}
-	go f.loop(path)
-	return f
+// Running reports whether PresentMon is currently streaming.
+func (f *FPSSource) Running() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.running
 }
 
 func (f *FPSSource) Stop() {
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.closed = true
 	if f.cmd != nil && f.cmd.Process != nil {
 		f.cmd.Process.Kill()
 	}
-	f.mu.Unlock()
 }
 
-func (f *FPSSource) loop(path string) {
-	for {
-		f.mu.Lock()
-		if f.closed {
-			f.mu.Unlock()
+func (f *FPSSource) run() {
+	path, err := sidecar.Path(sidecar.PresentMon)
+	if err != nil {
+		return // not bundled in this build
+	}
+
+	// The usual reason for failing to start is missing elevation, which will
+	// not change while the app runs — so retry a few times, then stop.
+	const maxFailures = 3
+	failures := 0
+
+	for !f.stopped() {
+		if f.streamOnce(path) {
+			failures = 0
+		} else if failures++; failures >= maxFailures {
 			return
 		}
-		f.mu.Unlock()
-
-		cmd := exec.Command(path,
-			"--output_stdout",
-			"--stop_existing_session",
-			"--session_name", "OpenMonitoring")
-		hideWindow(cmd)
-		stdout, err := cmd.StdoutPipe()
-		if err == nil {
-			err = cmd.Start()
-		}
-		if err != nil {
-			time.Sleep(60 * time.Second) // likely not elevated; retry rarely
-			continue
-		}
-		f.mu.Lock()
-		f.cmd = cmd
-		f.mu.Unlock()
-
-		f.consume(stdout)
-		cmd.Wait()
-
-		f.mu.Lock()
-		closed := f.closed
-		f.rings = map[uint32]*frameRing{}
-		f.mu.Unlock()
-		if closed {
+		if f.stopped() {
 			return
 		}
 		time.Sleep(30 * time.Second)
 	}
 }
 
-func (f *FPSSource) consume(r interface{ Read([]byte) (int, error) }) {
-	sc := bufio.NewScanner(r)
+func (f *FPSSource) stopped() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.closed
+}
+
+// streamOnce runs PresentMon until it exits, reporting whether it started.
+func (f *FPSSource) streamOnce(path string) bool {
+	cmd := exec.Command(path,
+		"--output_stdout",
+		"--stop_existing_session",
+		"--session_name", "OpenMonitoring")
+	hideWindow(cmd)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return false
+	}
+	if err := cmd.Start(); err != nil {
+		return false
+	}
+
+	f.mu.Lock()
+	f.cmd, f.running = cmd, true
+	f.mu.Unlock()
+
+	f.consume(stdout)
+	cmd.Wait()
+
+	f.mu.Lock()
+	f.running = false
+	f.frames = map[uint32][]frameTime{} // stale the moment the stream stops
+	f.mu.Unlock()
+
+	return true
+}
+
+// consume parses PresentMon's CSV stream. Column names and order differ
+// between PresentMon versions, so the header is resolved by name rather than
+// by position — and re-resolved whenever a new header appears mid-stream.
+func (f *FPSSource) consume(stdout io.Reader) {
+	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), 512*1024)
-	iApp, iPid, iMs := -1, -1, -1
+
+	appCol, pidCol, msCol := -1, -1, -1
+
 	for sc.Scan() {
 		line := sc.Text()
-		if iMs < 0 || strings.HasPrefix(line, "Application") {
-			// header (PresentMon may re-emit it); column names differ by version
-			cols := strings.Split(line, ",")
-			for i, c := range cols {
-				switch strings.ToLower(strings.TrimSpace(c)) {
-				case "application":
-					iApp = i
-				case "processid":
-					iPid = i
-				case "msbetweenpresents", "frametime", "msbetweendisplaychange":
-					if iMs < 0 || strings.EqualFold(c, "MsBetweenPresents") || strings.EqualFold(c, "FrameTime") {
-						iMs = i
-					}
-				}
-			}
+
+		if msCol < 0 || strings.HasPrefix(line, "Application") {
+			appCol, pidCol, msCol = parseFPSHeader(line)
 			continue
 		}
+
 		cols := strings.Split(line, ",")
-		if iApp >= len(cols) || iPid >= len(cols) || iMs >= len(cols) {
+		if appCol >= len(cols) || pidCol >= len(cols) || msCol >= len(cols) {
 			continue
 		}
-		pid64, err := strconv.ParseUint(strings.TrimSpace(cols[iPid]), 10, 32)
+		pid, err := strconv.ParseUint(strings.TrimSpace(cols[pidCol]), 10, 32)
 		if err != nil {
 			continue
 		}
-		ms, err := strconv.ParseFloat(strings.TrimSpace(cols[iMs]), 64)
+		ms, err := strconv.ParseFloat(strings.TrimSpace(cols[msCol]), 64)
 		if err != nil || ms <= 0 || math.IsNaN(ms) {
 			continue
 		}
-		pid := uint32(pid64)
-		now := time.Now()
 
 		f.mu.Lock()
-		ring := f.rings[pid]
-		if ring == nil {
-			ring = &frameRing{}
-			f.rings[pid] = ring
-			f.names[pid] = strings.TrimSuffix(strings.TrimSpace(cols[iApp]), ".exe")
+		if _, seen := f.frames[uint32(pid)]; !seen {
+			f.names[uint32(pid)] = strings.TrimSuffix(strings.TrimSpace(cols[appCol]), ".exe")
 		}
-		ring.entries = append(ring.entries, frameEntry{at: now, ms: ms})
+		f.frames[uint32(pid)] = append(f.frames[uint32(pid)], frameTime{at: time.Now(), ms: ms})
 		f.mu.Unlock()
 	}
 }
 
-// Metrics computes FPS stats for the foreground process (or, failing that,
-// the process presenting the most frames).
+func parseFPSHeader(line string) (appCol, pidCol, msCol int) {
+	appCol, pidCol, msCol = -1, -1, -1
+	for i, name := range strings.Split(line, ",") {
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "application":
+			appCol = i
+		case "processid":
+			pidCol = i
+		case "msbetweenpresents", "frametime", "msbetweendisplaychange":
+			// The first two are the real frame time; the third is a fallback
+			// only used when neither is present.
+			if msCol < 0 || !strings.EqualFold(strings.TrimSpace(name), "MsBetweenDisplayChange") {
+				msCol = i
+			}
+		}
+	}
+	return appCol, pidCol, msCol
+}
+
+// Metrics computes FPS statistics for the foreground process, falling back to
+// whichever process is presenting the most frames when the foreground window
+// is not a rendering application.
 func (f *FPSSource) Metrics() *FPSMetrics {
 	now := time.Now()
-	fg := foregroundPID()
+	foreground := foregroundPID()
 	self := uint32(os.Getpid())
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// prune old frames and drop idle processes
-	for pid, ring := range f.rings {
-		cut := 0
-		for cut < len(ring.entries) && now.Sub(ring.entries[cut].at) > fpsWindow {
-			cut++
-		}
-		ring.entries = ring.entries[cut:]
-		if len(ring.entries) == 0 {
-			delete(f.rings, pid)
-			delete(f.names, pid)
-		}
-	}
+	f.pruneLocked(now)
 
-	pick := uint32(0)
-	if fg != 0 && fg != self {
-		if ring := f.rings[fg]; ring != nil && len(ring.entries) >= 8 {
-			pick = fg
-		}
-	}
-	if pick == 0 {
-		best := 0
-		for pid, ring := range f.rings {
-			name := strings.ToLower(f.names[pid])
-			if pid == self || name == "dwm" || name == "explorer" {
-				continue
-			}
-			if n := len(ring.entries); n > best && n >= 30 {
-				best = n
-				pick = pid
-			}
-		}
-	}
-	if pick == 0 {
+	pid := f.pickProcessLocked(foreground, self)
+	if pid == 0 {
 		return nil
 	}
 
-	entries := f.rings[pick].entries
-	msAll := make([]float64, 0, len(entries))
-	var sumAll, sumCur float64
-	nCur := 0
-	for _, e := range entries {
-		msAll = append(msAll, e.ms)
-		sumAll += e.ms
-		if now.Sub(e.at) <= time.Second {
-			sumCur += e.ms
-			nCur++
+	frames := f.frames[pid]
+	all := make([]float64, 0, len(frames))
+	var sumAll, sumRecent float64
+	recent := 0
+
+	for _, fr := range frames {
+		all = append(all, fr.ms)
+		sumAll += fr.ms
+		if now.Sub(fr.at) <= time.Second {
+			sumRecent += fr.ms
+			recent++
 		}
 	}
 
-	m := &FPSMetrics{Process: f.names[pick]}
-	if nCur > 0 {
-		m.Cur = round1(1000 / (sumCur / float64(nCur)))
+	m := &FPSMetrics{Process: f.names[pid]}
+	if recent > 0 {
+		m.Cur = round1(1000 / (sumRecent / float64(recent)))
 	}
-	m.Avg = round1(1000 / (sumAll / float64(len(msAll))))
+	m.Avg = round1(1000 / (sumAll / float64(len(all))))
 
-	sort.Float64s(msAll) // ascending; worst frames at the end
-	if worst := meanTail(msAll, 0.01); worst > 0 {
+	sort.Float64s(all) // ascending, so the worst frames are at the end
+	if worst := meanTail(all, 0.01); worst > 0 {
 		m.Low1 = round1(1000 / worst)
 	}
-	if worst := meanTail(msAll, 0.001); worst > 0 {
+	if worst := meanTail(all, 0.001); worst > 0 {
 		m.Low01 = round1(1000 / worst)
 	}
 	return m
 }
 
-// meanTail averages the worst `frac` share of sorted-ascending frame times.
+// pruneLocked drops frames older than the window and forgets processes that
+// have stopped presenting entirely.
+func (f *FPSSource) pruneLocked(now time.Time) {
+	for pid, frames := range f.frames {
+		cut := 0
+		for cut < len(frames) && now.Sub(frames[cut].at) > fpsWindow {
+			cut++
+		}
+		frames = frames[cut:]
+
+		if len(frames) == 0 {
+			delete(f.frames, pid)
+			delete(f.names, pid)
+			continue
+		}
+		f.frames[pid] = frames
+	}
+}
+
+// pickProcessLocked chooses whose frame rate to report. The foreground window
+// wins when it is actually rendering; otherwise the busiest presenter does,
+// which covers a game running while its launcher holds focus.
+func (f *FPSSource) pickProcessLocked(foreground, self uint32) uint32 {
+	if foreground != 0 && foreground != self && len(f.frames[foreground]) >= minFramesForeground {
+		return foreground
+	}
+
+	// The desktop compositor and shell always present; they are never the
+	// application the user is interested in.
+	const minFramesFallback = 30
+	best, bestPID := 0, uint32(0)
+	for pid, frames := range f.frames {
+		name := strings.ToLower(f.names[pid])
+		if pid == self || name == "dwm" || name == "explorer" {
+			continue
+		}
+		if len(frames) > best && len(frames) >= minFramesFallback {
+			best, bestPID = len(frames), pid
+		}
+	}
+	return bestPID
+}
+
+// meanTail averages the worst `frac` share of sorted-ascending frame times,
+// which is how 1% and 0.1% lows are conventionally defined.
 func meanTail(sortedMs []float64, frac float64) float64 {
 	n := int(math.Ceil(float64(len(sortedMs)) * frac))
 	if n < 1 {
@@ -251,9 +296,10 @@ func meanTail(sortedMs []float64, frac float64) float64 {
 	if n > len(sortedMs) {
 		return 0
 	}
+
 	sum := 0.0
-	for _, v := range sortedMs[len(sortedMs)-n:] {
-		sum += v
+	for _, ms := range sortedMs[len(sortedMs)-n:] {
+		sum += ms
 	}
 	return sum / float64(n)
 }
