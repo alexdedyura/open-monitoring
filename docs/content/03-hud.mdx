@@ -34,11 +34,21 @@ benchmark scene, a new area — so the cumulative numbers describe that and not
 the loading screen before it. The current frame rate and the graphs keep
 running.
 
-Both combinations can be changed in `%APPDATA%\OpenMonitoring\config.json`
-(`hud.hotkeyToggle` and `hud.hotkeyReset`), and accept anything of the form
-`Ctrl+Alt+H`, `Shift+F9` or a bare `F9`. A shortcut without a modifier is
-claimed globally too — a bare `H` would stop the letter reaching any other
-application, including the game.
+Both can be changed under **Settings → HUD overlay**: click a shortcut and press
+the combination you want. Letters, digits and F1–F24 are accepted, with at least
+one of Ctrl, Alt, Shift or Win; `Esc` cancels the capture. The new combination is
+claimed the moment the settings are saved — no restart.
+
+Windows gives a combination to whichever application registers it first and will
+not say which one that was, so a perfectly valid shortcut can simply be dead. If
+that happens the field says **held by another application** and you can pick
+another — without it, a shortcut that never fires is indistinguishable from a
+broken feature.
+
+A shortcut with no modifier at all is still possible by hand-editing
+`%APPDATA%\OpenMonitoring\config.json` (`hud.hotkeyToggle`, `hud.hotkeyReset`),
+but the capture field will not produce one: a bare `H` is claimed globally too,
+and would stop the letter reaching any other application, the game included.
 
 ## Positioning and appearance
 

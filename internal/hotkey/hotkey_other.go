@@ -12,6 +12,8 @@ type Binding struct {
 
 type Manager struct{}
 
-func Register([]Binding) (*Manager, []error) { return &Manager{}, nil }
+func Register(bindings []Binding) (*Manager, []error) {
+	return &Manager{}, make([]error, len(bindings))
+}
 
 func (m *Manager) Stop() {}

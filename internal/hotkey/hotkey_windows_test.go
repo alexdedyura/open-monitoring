@@ -38,6 +38,25 @@ func TestParseRejectsNonsense(t *testing.T) {
 	}
 }
 
+// The errors line up with the bindings by position, which is what lets Settings
+// point at the shortcut that failed. An entry that slid to another index would
+// blame the wrong combination — worse than saying nothing.
+func TestRegisterErrorsAlignWithBindings(t *testing.T) {
+	m, errs := Register([]Binding{
+		{Combo: "Ctrl+Nonsense"},
+		{Combo: "Ctrl+Alt+Shift+F24"},
+	})
+	defer m.Stop()
+
+	if len(errs) != 2 {
+		t.Fatalf("len(errs) = %d, want one entry per binding", len(errs))
+	}
+	if errs[0] == nil {
+		t.Error("an unparseable combination was reported as live")
+	}
+	// errs[1] is up to the desktop: only its position is under test here.
+}
+
 // Register hands back a manager that Stop can always be called on, including
 // when every binding was rejected.
 func TestRegisterAndStop(t *testing.T) {

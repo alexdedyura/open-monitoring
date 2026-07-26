@@ -31,9 +31,35 @@ func (a *App) GetConfig() config.Config {
 // effect immediately.
 func (a *App) SaveConfig(cfg config.Config) error {
 	config.Clamp(&cfg)
+
+	rebind := cfg.Hud.HotkeyToggle != a.cfg.Hud.HotkeyToggle ||
+		cfg.Hud.HotkeyReset != a.cfg.Hud.HotkeyReset
+
 	a.cfg = cfg
 	a.collector.SetInterval(cfg.SampleIntervalMs)
+	if rebind {
+		// Before Save, so that GetHotkeyStatus right after this call already
+		// describes the combinations that were just stored.
+		a.reregisterHotkeys()
+	}
 	return config.Save(cfg)
+}
+
+// HotkeyStatus says whether each shortcut is actually live. A combination can
+// be spelled perfectly and still never fire, because another application
+// registered it first and Windows will not say which one — without this the
+// user has no way to tell that from a broken feature.
+type HotkeyStatus struct {
+	Toggle bool `json:"toggle"`
+	Reset  bool `json:"reset"`
+}
+
+func (a *App) GetHotkeyStatus() HotkeyStatus {
+	a.hotkeyMu.Lock()
+	defer a.hotkeyMu.Unlock()
+
+	live := func(i int) bool { return i < len(a.hotkeyErrs) && a.hotkeyErrs[i] == nil }
+	return HotkeyStatus{Toggle: live(hotkeyToggle), Reset: live(hotkeyReset)}
 }
 
 // GetHistory returns buffered samples covering the last `seconds` seconds, so

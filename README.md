@@ -67,7 +67,8 @@ whole recording, including the moment a game starts.</summary>
   sparklines, adjustable opacity and screen anchoring. Works over windowed and
   borderless-fullscreen games, and system-wide shortcuts toggle it
   (`Ctrl+Alt+H`) or restart the averages for a fresh run (`Ctrl+Alt+B`)
-  without leaving the game.
+  without leaving the game. Both are rebindable in Settings, which also says so
+  when another application already holds one.
 
 ## Download
 

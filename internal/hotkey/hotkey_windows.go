@@ -61,9 +61,12 @@ type msg struct {
 	lPrivate uint32
 }
 
-// Register claims every binding and starts listening. Bindings that Windows
-// refuses — almost always because another application already owns the
-// combination — are reported by their index; the rest still work.
+// Register claims every binding and starts listening. The returned slice has
+// one entry per binding, nil where the shortcut is live and an error where it
+// is not; the rest still work. Position carries the identity because the caller
+// has to be able to point at the shortcut that failed — Windows hands a
+// combination to whoever asks first and refuses everyone after, so a perfectly
+// valid shortcut can be dead on arrival and only the app can say so.
 func Register(bindings []Binding) (*Manager, []error) {
 	m := &Manager{quit: make(chan struct{})}
 	ready := make(chan []error, 1)
@@ -79,17 +82,17 @@ func Register(bindings []Binding) (*Manager, []error) {
 		tid, _, _ := procGetCurrentTID.Call()
 		m.tid = uint32(tid)
 
-		var errs []error
+		errs := make([]error, len(bindings))
 		registered := make([]int, 0, len(bindings))
 		for i, b := range bindings {
 			mods, vk, err := parse(b.Combo)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("hotkey %d (%q): %w", i, b.Combo, err))
+				errs[i] = fmt.Errorf("%q: %w", b.Combo, err)
 				continue
 			}
 			ok, _, callErr := procRegisterHotKey.Call(0, uintptr(i+1), uintptr(mods|modNoRepeat), uintptr(vk))
 			if ok == 0 {
-				errs = append(errs, fmt.Errorf("hotkey %d (%q) is unavailable: %w", i, b.Combo, callErr))
+				errs[i] = fmt.Errorf("%q is unavailable: %w", b.Combo, callErr)
 				continue
 			}
 			registered = append(registered, i)

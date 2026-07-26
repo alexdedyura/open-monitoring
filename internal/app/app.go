@@ -39,9 +39,21 @@ type App struct {
 	recMu sync.Mutex
 	rec   *recording
 
-	win     window // dashboard/HUD geometry, guarded by its own mutex
-	hotkeys *hotkey.Manager
+	win window // dashboard/HUD geometry, guarded by its own mutex
+
+	// The shortcuts can be re-registered from a binding call while Startup is
+	// still finishing, and Wails does not promise binding calls are serialised.
+	hotkeyMu   sync.Mutex
+	hotkeys    *hotkey.Manager
+	hotkeyErrs []error // one per binding below, nil where the shortcut is live
 }
+
+// The order the shortcuts are registered in. GetHotkeyStatus reports them by
+// the same index, so the two lists have to stay in step.
+const (
+	hotkeyToggle = iota
+	hotkeyReset
+)
 
 // New builds the app. The stress runner is created here rather than in Startup
 // because the frontend may ask for its status before the window is ready.
@@ -71,16 +83,35 @@ func (a *App) Startup(ctx context.Context) {
 
 // registerHotkeys claims the two system-wide shortcuts. A combination another
 // application already owns cannot be claimed, and that is not worth failing
-// startup over — the app logs it and runs without that one.
+// startup over — the app runs without that one and Settings reports it, which
+// is the only way the user can tell a dead shortcut from a broken feature.
 func (a *App) registerHotkeys() {
 	keys, errs := hotkey.Register([]hotkey.Binding{
-		{Combo: a.cfg.Hud.HotkeyToggle, Do: a.ToggleHud},
-		{Combo: a.cfg.Hud.HotkeyReset, Do: a.ResetFPSStats},
+		hotkeyToggle: {Combo: a.cfg.Hud.HotkeyToggle, Do: a.ToggleHud},
+		hotkeyReset:  {Combo: a.cfg.Hud.HotkeyReset, Do: a.ResetFPSStats},
 	})
 	for _, err := range errs {
-		runtime.LogWarningf(a.ctx, "hotkey not registered: %v", err)
+		if err != nil {
+			runtime.LogWarningf(a.ctx, "hotkey not registered: %v", err)
+		}
 	}
-	a.hotkeys = keys
+
+	a.hotkeyMu.Lock()
+	a.hotkeys, a.hotkeyErrs = keys, errs
+	a.hotkeyMu.Unlock()
+}
+
+// reregisterHotkeys swaps in the combinations the config now holds. A
+// registration belongs to the listener thread that made it, so changing one
+// means stopping that thread and starting a fresh one — there is no Win32 call
+// to amend a registration in place.
+func (a *App) reregisterHotkeys() {
+	a.hotkeyMu.Lock()
+	previous := a.hotkeys
+	a.hotkeyMu.Unlock()
+
+	previous.Stop() // releases the combinations before the new ones ask for them
+	a.registerHotkeys()
 }
 
 // Shutdown is wired to Wails' OnShutdown. Stopping the recording first flushes
@@ -88,7 +119,12 @@ func (a *App) registerHotkeys() {
 // time to delete its multi-gigabyte test file.
 func (a *App) Shutdown(ctx context.Context) {
 	a.StopRecording()
-	a.hotkeys.Stop()
+
+	a.hotkeyMu.Lock()
+	keys := a.hotkeys
+	a.hotkeyMu.Unlock()
+	keys.Stop()
+
 	if a.stress != nil {
 		a.stress.StopAll()
 	}

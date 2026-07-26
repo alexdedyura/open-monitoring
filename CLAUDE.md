@@ -73,6 +73,13 @@ Every exported method on `app.App` becomes a frontend binding — Wails generate
   thread*, and only that thread's queue gets WM_HOTKEY — hence the locked OS
   thread and the `GetMessage` loop. Combinations are config strings; a bare key
   parses fine but is claimed machine-wide, so the defaults carry Ctrl+Alt.
+  There is no Win32 call to amend a registration, so changing one means
+  `Manager.Stop()` then `Register()` again (`App.reregisterHotkeys`, driven from
+  `SaveConfig`). `Register` returns one error slot per binding, nil where the
+  shortcut is live — Settings reads that through `GetHotkeyStatus`, because a
+  combination another app already owns fails silently and looks exactly like a
+  broken feature. The capture field only offers what `parse` supports (letters,
+  digits, F1–F24).
 - **Wails bindings**: the generator does not descend into embedded structs to
   find named types — declare fields directly on the bound struct (see
   `StaticInfo` / `ApplyBridgeInfo`). Embedded structs of primitives are fine.
@@ -109,7 +116,12 @@ Every exported method on `app.App` becomes a frontend binding — Wails generate
   together.
 - The About tab inlines the repo README via a Vite `?raw` import from outside
   the frontend root — `vite.config.js` has `server.fs.allow: ['..']` for it;
-  links are routed to the system browser through `BrowserOpenURL`.
+  links are routed to the system browser through `BrowserOpenURL`. It drops the
+  Screenshots and Download sections with a regex that **must** allow `\r?\n`:
+  the README is checked out with CRLF, so a `\n`-only pattern matches nothing
+  and fails silently — which is how screenshots once rendered there as captions
+  with no images. The version shown comes from `wails.json`, the same source as
+  the exe's file properties and the installer pages.
 - CI (`.github/workflows/release.yml`): every push to main/master runs
   `build.ps1 -Installer` on windows-latest and updates the rolling `latest`
   GitHub Release with the portable exe and the NSIS installer. The installer

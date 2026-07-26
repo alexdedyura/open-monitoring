@@ -2,11 +2,16 @@
   import {live, saveConfig, refreshInfo, api} from './state.svelte.js'
   import {METRICS, HUD_GROUPS} from './metricDefs.js'
   import SystemPanel from './SystemPanel.svelte'
+  import HotkeyInput from './HotkeyInput.svelte'
   import {onMount} from 'svelte'
 
   let cfg = $state(structuredClone($state.snapshot(live.cfg)))
   let saved = $state(false)
   let disks = $state([])
+
+  // Whether Windows actually handed us each shortcut. It describes the saved
+  // combinations, so it says nothing about one still being edited.
+  let hotkeys = $state({toggle: true, reset: true})
 
   // The save bar reacts to edits: comparing against the applied config is
   // cheap at this size and spares tracking every field by hand.
@@ -27,7 +32,16 @@
     } catch {
       // keep whatever was already known
     }
+    await refreshHotkeys()
   })
+
+  async function refreshHotkeys() {
+    try {
+      hotkeys = await api.GetHotkeyStatus()
+    } catch {
+      // keep whatever was already known
+    }
+  }
 
   function toggleMetric(k) {
     const i = cfg.hud.metrics.indexOf(k)
@@ -37,6 +51,9 @@
 
   async function save() {
     await saveConfig($state.snapshot(cfg))
+    // The backend re-registers the shortcuts as part of the save, so the status
+    // now describes the combinations that were just stored.
+    await refreshHotkeys()
     saved = true
     setTimeout(() => (saved = false), 2500)
   }
@@ -159,23 +176,37 @@
       <input type="range" min="0.2" max="1" step="0.05" class="w-full accent-white" bind:value={cfg.hud.opacity} />
     </label>
 
-    <div class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink2">
-      <span>
-        <kbd class="rounded border border-line bg-card2 px-1.5 py-0.5 font-mono text-[11px] text-ink">{cfg.hud.hotkeyToggle}</kbd>
-        show / hide the overlay
-      </span>
-      <span>
-        <kbd class="rounded border border-line bg-card2 px-1.5 py-0.5 font-mono text-[11px] text-ink">{cfg.hud.hotkeyReset}</kbd>
-        restart average and lows
-      </span>
+    <div class="space-y-2">
+      <div class="text-sm text-ink2">Shortcuts</div>
+      <div class="flex items-start justify-between gap-4">
+        <span class="pt-1.5 text-xs text-ink2">Show / hide the overlay</span>
+        <div class="text-right">
+          <HotkeyInput
+            value={cfg.hud.hotkeyToggle}
+            live={dirty || hotkeys.toggle}
+            onchange={(v) => (cfg.hud.hotkeyToggle = v)}
+          />
+        </div>
+      </div>
+      <div class="flex items-start justify-between gap-4">
+        <span class="pt-1.5 text-xs text-ink2">Restart average and lows</span>
+        <div class="text-right">
+          <HotkeyInput
+            value={cfg.hud.hotkeyReset}
+            live={dirty || hotkeys.reset}
+            onchange={(v) => (cfg.hud.hotkeyReset = v)}
+          />
+        </div>
+      </div>
     </div>
 
     <p class="text-xs leading-relaxed text-mut">
       The HUD is a compact always-on-top overlay: drag it anywhere, resize by the
       edges — position and size are remembered. It stays above windowed and
-      borderless-fullscreen games (exclusive fullscreen hides any overlay). Both
-      shortcuts work while a game has focus, and can be changed in
-      <code class="font-mono">config.json</code>.
+      borderless-fullscreen games (exclusive fullscreen hides any overlay). The
+      shortcuts work while a game has focus: click one and press the combination
+      you want. Windows gives a combination to whichever application asks for it
+      first, so if one is reported as held elsewhere, pick another.
     </p>
   </div>
 
