@@ -19,10 +19,11 @@ import (
 // tools/lhm-bridge. It streams one JSON object per interval on stdout; this
 // type owns the process lifecycle and the decoding.
 type SensorSource struct {
-	mu     sync.Mutex
-	latest *SensorReading
-	cmd    *exec.Cmd
-	closed bool
+	mu      sync.Mutex
+	latest  *SensorReading
+	cmd     *exec.Cmd
+	closed  bool
+	lastErr string // why the helper is not delivering, for Settings
 
 	// restart wakes the run loop out of its backoff sleep. Buffered so a
 	// request is never lost and never blocks the caller.
@@ -96,6 +97,21 @@ func (s *SensorSource) Latest() *SensorReading {
 	return s.latest
 }
 
+// LastError explains why no data is coming, empty while everything works.
+// It survives the failure it describes, which is the point: by the time the
+// user opens Settings the crashed helper is long gone.
+func (s *SensorSource) LastError() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastErr
+}
+
+func (s *SensorSource) setErr(msg string) {
+	s.mu.Lock()
+	s.lastErr = msg
+	s.mu.Unlock()
+}
+
 func (s *SensorSource) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -111,7 +127,9 @@ func (s *SensorSource) Stop() {
 func (s *SensorSource) run() {
 	path, err := sidecar.Path(sidecar.Bridge)
 	if err != nil {
-		return // not bundled in this build, and that will not change at runtime
+		// Not bundled in this build, and that will not change at runtime.
+		s.setErr("the sensor helper is not bundled in this build")
+		return
 	}
 
 	const (
@@ -141,6 +159,7 @@ func (s *SensorSource) run() {
 				continue // relaunch immediately
 			}
 		} else if failures++; failures >= maxFailures {
+			s.setErr("the sensor helper keeps exiting on startup; gave up restarting it")
 			return
 		}
 
@@ -179,11 +198,12 @@ func (s *SensorSource) streamOnce(path string) {
 		return
 	}
 	if err := cmd.Start(); err != nil {
+		s.setErr("the sensor helper failed to start: " + err.Error())
 		return
 	}
 
 	s.mu.Lock()
-	s.cmd = cmd
+	s.cmd, s.lastErr = cmd, ""
 	s.mu.Unlock()
 
 	s.consume(stdout)

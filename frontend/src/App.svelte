@@ -96,12 +96,15 @@
       <nav class="nodrag ml-8 flex h-full items-stretch">
         {#each tabs as t (t.id)}
           <button
-            class="border-b-2 px-3 font-mono text-[11px] uppercase tracking-[0.1em] {live.view === t.id
+            class="relative border-b-2 px-3 font-mono text-[11px] uppercase tracking-[0.1em] {live.view === t.id
               ? 'border-ink text-ink'
               : 'border-transparent text-mut hover:text-ink2'}"
             onclick={() => (live.view = t.id)}
           >
             {t.label}
+            {#if t.id === 'about' && live.update?.available}
+              <span class="absolute right-0.5 top-2 h-1.5 w-1.5 rounded-full bg-cpu" title="Update available"></span>
+            {/if}
           </button>
         {/each}
       </nav>
@@ -179,6 +182,31 @@
       {/if}
     </main>
   </div>
+
+  <!-- threshold alerts: auto-expiring toasts above every tab -->
+  {#if live.alerts.length}
+    <div class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[340px] flex-col gap-2">
+      {#each live.alerts as a (a.id + a.at)}
+        <div
+          class="pointer-events-auto flex items-start gap-2.5 rounded-lg border border-rec/40 bg-card p-3 shadow-xl"
+          transition:fade={{duration: 150}}
+        >
+          <span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-rec"></span>
+          <div class="min-w-0 grow">
+            <div class="font-mono text-[10px] uppercase tracking-[0.12em] text-mut">Alert</div>
+            <div class="text-xs leading-relaxed text-ink">{a.message}</div>
+          </div>
+          <button
+            class="shrink-0 text-mut hover:text-ink"
+            onclick={() => live.alerts.splice(live.alerts.indexOf(a), 1)}
+            aria-label="Dismiss"
+          >
+            <svg width="9" height="9" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" /></svg>
+          </button>
+        </div>
+      {/each}
+    </div>
+  {/if}
 
   {#if hudAlert}
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" transition:fade={{duration: 150}}>

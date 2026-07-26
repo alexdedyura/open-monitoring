@@ -2,8 +2,9 @@
 
 package app
 
-func startTopmostKeeper() {}
-func stopTopmostKeeper()  {}
+func startTopmostKeeper()      {}
+func stopTopmostKeeper()       {}
+func applyClickThrough(_ bool) {}
 
 // ClampToScreen is a no-op outside Windows; the position is used as saved.
 func ClampToScreen(x, y, w, h int) (int, int) { return x, y }

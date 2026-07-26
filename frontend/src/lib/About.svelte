@@ -3,6 +3,7 @@
   // (Vite ?raw import), so the tab works offline and always matches the build.
   import {marked} from 'marked'
   import {BrowserOpenURL} from '../../wailsjs/runtime/runtime.js'
+  import {live, api} from './state.svelte.js'
   import Logo from './Logo.svelte'
   import readme from '../../../README.md?raw'
   // The version comes from wails.json because that is what already stamps the
@@ -13,6 +14,41 @@
 
   const VERSION = wailsConfig.info.productVersion
   const REPO_URL = 'https://github.com/alexdedyura/open-monitoring'
+
+  // idle → checking → (uptodate | available) → downloading → ready | error.
+  // The background check may land at any point; it only ever moves idle
+  // states forward, never interrupts a download.
+  let phase = $state(live.update?.available ? 'available' : 'idle')
+  let error = $state('')
+
+  $effect(() => {
+    if (live.update?.available && (phase === 'idle' || phase === 'uptodate')) phase = 'available'
+  })
+
+  async function check() {
+    phase = 'checking'
+    error = ''
+    try {
+      const info = await api.CheckForUpdate()
+      live.update = info
+      phase = info.available ? 'available' : 'uptodate'
+    } catch (e) {
+      error = String(e)
+      phase = 'error'
+    }
+  }
+
+  async function download() {
+    phase = 'downloading'
+    error = ''
+    try {
+      await api.ApplyUpdate()
+      phase = 'ready'
+    } catch (e) {
+      error = String(e)
+      phase = 'error'
+    }
+  }
 
   // Sections that only make sense outside the app: the screenshots are for
   // GitHub — their repo-relative paths cannot resolve inside the WebView, and
@@ -60,6 +96,56 @@
       </svg>
       Star on GitHub
     </button>
+  </div>
+
+  <!-- updates: manual check, one-click install, restart -->
+  <div class="flex items-center gap-3 rounded-lg border border-line bg-card px-4 py-3">
+    <div class="min-w-0 grow">
+      <div class="text-sm text-ink">Updates</div>
+      <div class="font-mono text-[10px] text-mut">
+        {#if phase === 'checking'}
+          checking…
+        {:else if phase === 'uptodate'}
+          v{VERSION} is the latest version
+        {:else if phase === 'available'}
+          {live.update.latest} is available —
+          <button class="underline hover:text-ink" onclick={() => BrowserOpenURL(live.update.url)}>release notes</button>
+        {:else if phase === 'downloading'}
+          downloading and swapping the executable…
+        {:else if phase === 'ready'}
+          installed — restart to finish
+        {:else if phase === 'error'}
+          {error}
+        {:else}
+          checked automatically once a day
+        {/if}
+      </div>
+    </div>
+    {#if phase === 'available'}
+      <button
+        class="shrink-0 rounded-md border border-line bg-card2 px-3 py-1.5 font-mono text-xs text-ink hover:border-ink2"
+        onclick={download}
+      >
+        Update to {live.update.latest}
+      </button>
+    {:else if phase === 'ready'}
+      <button
+        class="shrink-0 rounded-md border border-line bg-card2 px-3 py-1.5 font-mono text-xs text-ink hover:border-ink2"
+        onclick={() => api.RestartApp()}
+      >
+        Restart now
+      </button>
+    {:else if phase === 'downloading'}
+      <span class="shrink-0 font-mono text-xs text-mut">…</span>
+    {:else}
+      <button
+        class="shrink-0 rounded-md border border-line px-3 py-1.5 font-mono text-xs text-ink2 hover:bg-card2"
+        onclick={check}
+        disabled={phase === 'checking'}
+      >
+        Check for updates
+      </button>
+    {/if}
   </div>
 
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->

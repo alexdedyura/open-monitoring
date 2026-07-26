@@ -20,15 +20,18 @@ import (
 // UI warns about that before switching to the HUD).
 
 var (
-	modUser32                = windows.NewLazySystemDLL("user32.dll")
-	procEnumWindows          = modUser32.NewProc("EnumWindows")
-	procGetWindowThreadPID   = modUser32.NewProc("GetWindowThreadProcessId")
-	procIsWindowVisible      = modUser32.NewProc("IsWindowVisible")
-	procGetWindow            = modUser32.NewProc("GetWindow")
-	procGetWindowTextLengthW = modUser32.NewProc("GetWindowTextLengthW")
-	procSetWindowPos         = modUser32.NewProc("SetWindowPos")
-	procGetSystemMetrics     = modUser32.NewProc("GetSystemMetrics")
-	procSystemParametersInfo = modUser32.NewProc("SystemParametersInfoW")
+	modUser32                      = windows.NewLazySystemDLL("user32.dll")
+	procEnumWindows                = modUser32.NewProc("EnumWindows")
+	procGetWindowThreadPID         = modUser32.NewProc("GetWindowThreadProcessId")
+	procIsWindowVisible            = modUser32.NewProc("IsWindowVisible")
+	procGetWindow                  = modUser32.NewProc("GetWindow")
+	procGetWindowTextLengthW       = modUser32.NewProc("GetWindowTextLengthW")
+	procSetWindowPos               = modUser32.NewProc("SetWindowPos")
+	procGetSystemMetrics           = modUser32.NewProc("GetSystemMetrics")
+	procSystemParametersInfo       = modUser32.NewProc("SystemParametersInfoW")
+	procGetWindowLongPtrW          = modUser32.NewProc("GetWindowLongPtrW")
+	procSetWindowLongPtrW          = modUser32.NewProc("SetWindowLongPtrW")
+	procSetLayeredWindowAttributes = modUser32.NewProc("SetLayeredWindowAttributes")
 )
 
 const (
@@ -44,7 +47,35 @@ const (
 	smCYVirtualScreen = 79
 
 	spiGetWorkArea = 0x0030
+
+	gwlExStyle      = ^uintptr(19) // GWL_EXSTYLE == -20
+	wsExTransparent = 0x00000020
+	wsExLayered     = 0x00080000
+	lwaAlpha        = 0x2
 )
+
+// applyClickThrough makes the window invisible to the mouse (or visible
+// again): clicks land on whatever is underneath, which for the HUD is the
+// game. WS_EX_TRANSPARENT only works on a layered window, and a layered
+// window that never sets its attributes stops painting — hence the full-alpha
+// attribute when the style has to be added.
+func applyClickThrough(on bool) {
+	hwnd := findMainWindow()
+	if hwnd == 0 {
+		return
+	}
+	style, _, _ := procGetWindowLongPtrW.Call(hwnd, gwlExStyle)
+	if !on {
+		procSetWindowLongPtrW.Call(hwnd, gwlExStyle, style&^uintptr(wsExTransparent))
+		return
+	}
+	if style&wsExLayered == 0 {
+		procSetWindowLongPtrW.Call(hwnd, gwlExStyle, style|wsExLayered|wsExTransparent)
+		procSetLayeredWindowAttributes.Call(hwnd, 0, 255, lwaAlpha)
+	} else {
+		procSetWindowLongPtrW.Call(hwnd, gwlExStyle, style|wsExTransparent)
+	}
+}
 
 // minVisible is how much of the overlay must remain on screen for a saved
 // position to be considered usable.
@@ -147,9 +178,14 @@ var (
 
 // findMainWindow returns our process's single top-level, visible, titled
 // window — the Wails main window (WebView2 runs in separate processes, so no
-// child windows are enumerated here). Only ever called from the keeper
-// goroutine, so the shared enum state needs no lock.
+// child windows are enumerated here). Called from the keeper goroutine and
+// from click-through switches, so the shared enum state is locked.
+var enumMu sync.Mutex
+
 func findMainWindow() uintptr {
+	enumMu.Lock()
+	defer enumMu.Unlock()
+
 	enumFoundHwnd = 0
 	enumPID = windows.GetCurrentProcessId()
 	procEnumWindows.Call(enumCallback, 0)

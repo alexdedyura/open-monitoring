@@ -113,12 +113,16 @@ type BridgeInfo struct {
 type SourceStatus struct {
 	// SensorsOK reports whether the hardware-sensor helper is delivering data.
 	SensorsOK bool `json:"sensorsOk"`
+	// SensorsError explains a dead helper, empty while it works. Settings
+	// shows it, because a silent dash in every field looks exactly like a bug.
+	SensorsError string `json:"sensorsError"`
 	// PawnIO reports whether the kernel driver that unlocks CPU package
 	// temperature and power is installed. See README, "CPU temperature".
 	PawnIO        bool   `json:"pawnIo"`
 	PawnIOVersion string `json:"pawnIoVersion"`
 	// FPSOK reports whether PresentMon started; it needs elevation.
-	FPSOK bool `json:"fpsOk"`
+	FPSOK    bool   `json:"fpsOk"`
+	FPSError string `json:"fpsError"`
 }
 
 // StaticInfo describes the machine. Most of it is gathered once at startup;

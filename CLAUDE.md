@@ -132,8 +132,26 @@ home are migrated in once and the old helper cache is removed. The manifest is
   with no images. The version shown comes from `wails.json`, the same source as
   the exe's file properties and the installer pages.
 - CI (`.github/workflows/release.yml`): every push to main/master runs
-  `build.ps1 -Installer` on windows-latest and updates the rolling `latest`
+  `go vet`/`go test` (internal/ only — vetting main needs frontend/dist) and
+  then `build.ps1 -Installer` on windows-latest, updating the rolling `latest`
   GitHub Release with the portable exe and the NSIS installer. The installer
   (`build/windows/installer/project.nsi`) has a components page: the app
   (read-only) + the PawnIO driver via winget, checked by default; uninstall
-  leaves PawnIO in place.
+  leaves PawnIO in place. Dependabot bumps all four ecosystems weekly.
+- **Updater** (`app/update.go`, go-selfupdate): tracks *versioned* releases
+  only — the rolling `latest` tag is not semver and is invisible to it, so
+  updates ship by cutting a `vX.Y.Z` release. The asset filter
+  `^open-monitoring\.exe$` is load-bearing: the installer asset contains
+  "amd64", which otherwise reads as an arch suffix and matches. The version
+  reaches Go through go:embed of wails.json in main.go. RestartApp relaunches
+  with `OPEN_MONITORING_RELAUNCH=1`; main.go answers it with a 2 s pause so
+  the dying instance frees the global hotkeys and the database first.
+- **Click-through** (`window_windows.go: applyClickThrough`):
+  WS_EX_TRANSPARENT only works on a layered window, and a layered window that
+  never sets attributes stops painting — when WS_EX_LAYERED has to be added,
+  SetLayeredWindowAttributes(alpha 255) must follow. The toggle hotkey exists
+  because a click-through window cannot be clicked back to normal.
+- **Alerts** (`app/alerts.go`) run on the collector goroutine: fire at ≥
+  threshold, re-arm below threshold−3, 10-minute cooldown per rule; volumes
+  alert independently (`disk:C:`). System toast via go-toast, in-app toast via
+  the "alert" event.

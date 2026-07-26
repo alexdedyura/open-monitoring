@@ -10,6 +10,8 @@ func StartFPS() *FPSSource { return nil }
 
 func (f *FPSSource) Running() bool { return false }
 
+func (f *FPSSource) LastError() string { return "" }
+
 func (f *FPSSource) Metrics() *FPSMetrics { return nil }
 
 func (f *FPSSource) Reset() {}

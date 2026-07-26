@@ -38,6 +38,12 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # Only internal/ — vetting the main package would need frontend/dist,
+      # which is not built until the packaging step below.
+      - name: Vet and test
+        shell: bash
+        run: go vet ./internal/... && go test -short ./internal/...
+
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 

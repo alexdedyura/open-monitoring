@@ -18,7 +18,7 @@ import (
 
 // currentVersion is bumped whenever a stored file needs fixing up on load.
 // See migrate for what each step does.
-const currentVersion = 9
+const currentVersion = 10
 
 type Config struct {
 	Version          int     `json:"version"`
@@ -27,7 +27,27 @@ type Config struct {
 	Theme            string  `json:"theme"`   // dark | light
 	UiScale          float64 `json:"uiScale"` // 0 = follow the Windows display scaling
 
-	Hud HudConfig `json:"hud"`
+	// UpdateCheck enables the daily background look at GitHub releases. The
+	// manual check in About works either way.
+	UpdateCheck bool `json:"updateCheck"`
+
+	// KeepSessionsDays deletes finished recordings older than this on startup.
+	// 0 keeps everything forever, which is the default — the app must never
+	// discard user data unless asked to.
+	KeepSessionsDays int `json:"keepSessionsDays"`
+
+	Alerts AlertsConfig `json:"alerts"`
+	Hud    HudConfig    `json:"hud"`
+}
+
+// AlertsConfig holds the notification thresholds. A threshold of 0 disables
+// that one rule; Enabled switches the whole feature.
+type AlertsConfig struct {
+	Enabled     bool    `json:"enabled"`
+	CPUTempC    float64 `json:"cpuTempC"`
+	GPUTempC    float64 `json:"gpuTempC"`
+	RAMPercent  float64 `json:"ramPercent"`
+	DiskPercent float64 `json:"diskPercent"` // used space per volume
 }
 
 type HudConfig struct {
@@ -40,18 +60,25 @@ type HudConfig struct {
 	H                int      `json:"h"`
 	FsAlertDismissed bool     `json:"fsAlertDismissed"` // "exclusive fullscreen hides the HUD" notice
 
+	// ClickThrough makes the overlay invisible to the mouse: clicks land on
+	// the game underneath. Toggled live with its hotkey, since a click-through
+	// window cannot be clicked back to normal.
+	ClickThrough bool `json:"clickThrough"`
+
 	// System-wide shortcuts, as "Ctrl+Alt+H". They are claimed globally, so
 	// they carry modifiers: a bare letter would be swallowed everywhere on the
 	// machine, including inside the game the HUD is watching.
-	HotkeyToggle string `json:"hotkeyToggle"` // show/hide the overlay
-	HotkeyReset  string `json:"hotkeyReset"`  // restart average and lows
+	HotkeyToggle       string `json:"hotkeyToggle"`       // show/hide the overlay
+	HotkeyReset        string `json:"hotkeyReset"`        // restart average and lows
+	HotkeyClickThrough string `json:"hotkeyClickThrough"` // mouse passes through the overlay
 }
 
 // Hotkey defaults. Ctrl+Alt is free of Windows' own bindings and of the usual
-// in-game ones, and both letters match what they do: HUD and Benchmark.
+// in-game ones, and the letters match what they do: HUD, Benchmark, Through.
 const (
-	DefaultHotkeyToggle = "Ctrl+Alt+H"
-	DefaultHotkeyReset  = "Ctrl+Alt+B"
+	DefaultHotkeyToggle       = "Ctrl+Alt+H"
+	DefaultHotkeyReset        = "Ctrl+Alt+B"
+	DefaultHotkeyClickThrough = "Ctrl+Alt+T"
 )
 
 // defaultHudMetrics mirrors a classic in-game OSD: a GPU block, a CPU block,
@@ -72,16 +99,29 @@ func Default() Config {
 		MaxRecordMinutes: 240,
 		Theme:            "dark",
 		UiScale:          0, // match Windows
+		UpdateCheck:      true,
+		KeepSessionsDays: 0, // keep forever
+		Alerts: AlertsConfig{
+			// On by default with values that mean "something is actually wrong",
+			// not "the machine is under load" — a monitoring app that cries wolf
+			// gets its notifications disabled within a day.
+			Enabled:     true,
+			CPUTempC:    95,
+			GPUTempC:    90,
+			RAMPercent:  95,
+			DiskPercent: 95,
+		},
 		Hud: HudConfig{
-			Metrics:      defaultHudMetrics(),
-			Opacity:      0.85,
-			Anchor:       "free",
-			X:            40,
-			Y:            40,
-			W:            320,
-			H:            620,
-			HotkeyToggle: DefaultHotkeyToggle,
-			HotkeyReset:  DefaultHotkeyReset,
+			Metrics:            defaultHudMetrics(),
+			Opacity:            0.85,
+			Anchor:             "free",
+			X:                  40,
+			Y:                  40,
+			W:                  320,
+			H:                  620,
+			HotkeyToggle:       DefaultHotkeyToggle,
+			HotkeyReset:        DefaultHotkeyReset,
+			HotkeyClickThrough: DefaultHotkeyClickThrough,
 		},
 	}
 }
@@ -208,6 +248,32 @@ func Clamp(cfg *Config) {
 	if cfg.Hud.HotkeyReset == "" {
 		cfg.Hud.HotkeyReset = DefaultHotkeyReset
 	}
+	if cfg.Hud.HotkeyClickThrough == "" {
+		cfg.Hud.HotkeyClickThrough = DefaultHotkeyClickThrough
+	}
+
+	if cfg.KeepSessionsDays < 0 || cfg.KeepSessionsDays > 3650 {
+		cfg.KeepSessionsDays = 0
+	}
+
+	// Thresholds: 0 disables a rule, anything else is forced into a range
+	// where the alert can both fire and stay quiet on a healthy machine.
+	clampThreshold(&cfg.Alerts.CPUTempC, 40, 110)
+	clampThreshold(&cfg.Alerts.GPUTempC, 40, 110)
+	clampThreshold(&cfg.Alerts.RAMPercent, 50, 100)
+	clampThreshold(&cfg.Alerts.DiskPercent, 50, 100)
+}
+
+func clampThreshold(v *float64, min, max float64) {
+	if *v == 0 {
+		return
+	}
+	if *v < min {
+		*v = min
+	}
+	if *v > max {
+		*v = max
+	}
 }
 
 // migrate fixes up a file written by an older version. Each step is written to
@@ -247,6 +313,10 @@ func migrate(cfg *Config, from int) {
 	//
 	// v9 added the HUD hotkeys. Clamp already fills an empty combination with
 	// the default, so the bump exists only to write the new keys into the file.
+	//
+	// v10 added the update check, alerts, session retention and click-through.
+	// Load unmarshals over Default(), so absent keys already read as their
+	// defaults — the bump only writes the new keys into the file.
 }
 
 func Save(cfg Config) error {

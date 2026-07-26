@@ -33,7 +33,8 @@ func (a *App) SaveConfig(cfg config.Config) error {
 	config.Clamp(&cfg)
 
 	rebind := cfg.Hud.HotkeyToggle != a.cfg.Hud.HotkeyToggle ||
-		cfg.Hud.HotkeyReset != a.cfg.Hud.HotkeyReset
+		cfg.Hud.HotkeyReset != a.cfg.Hud.HotkeyReset ||
+		cfg.Hud.HotkeyClickThrough != a.cfg.Hud.HotkeyClickThrough
 
 	a.cfg = cfg
 	a.collector.SetInterval(cfg.SampleIntervalMs)
@@ -50,8 +51,9 @@ func (a *App) SaveConfig(cfg config.Config) error {
 // registered it first and Windows will not say which one — without this the
 // user has no way to tell that from a broken feature.
 type HotkeyStatus struct {
-	Toggle bool `json:"toggle"`
-	Reset  bool `json:"reset"`
+	Toggle       bool `json:"toggle"`
+	Reset        bool `json:"reset"`
+	ClickThrough bool `json:"clickThrough"`
 }
 
 func (a *App) GetHotkeyStatus() HotkeyStatus {
@@ -59,7 +61,11 @@ func (a *App) GetHotkeyStatus() HotkeyStatus {
 	defer a.hotkeyMu.Unlock()
 
 	live := func(i int) bool { return i < len(a.hotkeyErrs) && a.hotkeyErrs[i] == nil }
-	return HotkeyStatus{Toggle: live(hotkeyToggle), Reset: live(hotkeyReset)}
+	return HotkeyStatus{
+		Toggle:       live(hotkeyToggle),
+		Reset:        live(hotkeyReset),
+		ClickThrough: live(hotkeyClickThrough),
+	}
 }
 
 // GetHistory returns buffered samples covering the last `seconds` seconds, so

@@ -314,11 +314,16 @@ func (c *Collector) BridgeInfo() BridgeInfo {
 // Static it is cheap, because the UI polls it: a helper may still have been
 // starting up when the window first asked.
 func (c *Collector) Status() SourceStatus {
-	st := SourceStatus{FPSOK: c.fps != nil && c.fps.Running()}
+	st := SourceStatus{}
+	if c.fps != nil {
+		st.FPSOK = c.fps.Running()
+		st.FPSError = c.fps.LastError()
+	}
 
 	if c.sensors == nil {
 		return st
 	}
+	st.SensorsError = c.sensors.LastError()
 	if r := c.sensors.Latest(); r != nil {
 		st.SensorsOK = true
 		st.PawnIO = r.PawnIO

@@ -29,6 +29,8 @@ export const live = $state({
   view: 'monitor', // monitor | sessions | stress | settings | about
   hud: false,
   range: 300, // seconds shown in live charts
+  update: null, // UpdateInfo once a newer release is known
+  alerts: [], // active threshold-alert toasts, newest last
 })
 
 function pushSample(s) {
@@ -95,6 +97,24 @@ export async function init() {
   // seeded once here — a run started before this window opened stays visible.
   EventsOn('stress', (s) => {
     live.stress = s
+  })
+  // The backend's daily check found a newer release; About offers it and the
+  // header shows a dot until the user looks.
+  EventsOn('update', (u) => {
+    live.update = u
+  })
+  // The click-through hotkey is handled by the backend (it fires while a game
+  // has focus); mirror the new state into the config the UI renders from.
+  EventsOn('clickthrough', (on) => {
+    if (live.cfg) live.cfg.hud.clickThrough = on
+  })
+  // Threshold alerts, shown as auto-expiring toasts on top of every view.
+  EventsOn('alert', (a) => {
+    live.alerts.push(a)
+    setTimeout(() => {
+      const i = live.alerts.indexOf(a)
+      if (i >= 0) live.alerts.splice(i, 1)
+    }, 10000)
   })
   try {
     live.stress = await api.GetStressStatus()

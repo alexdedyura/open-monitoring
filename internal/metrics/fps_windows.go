@@ -34,6 +34,7 @@ type FPSSource struct {
 	cmd     *exec.Cmd
 	running bool
 	closed  bool
+	lastErr string // why PresentMon is not delivering, for Settings
 }
 
 type frameTime struct {
@@ -98,6 +99,19 @@ func (f *FPSSource) Running() bool {
 	return f.running
 }
 
+// LastError explains why frame times are absent, empty while streaming works.
+func (f *FPSSource) LastError() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastErr
+}
+
+func (f *FPSSource) setErr(msg string) {
+	f.mu.Lock()
+	f.lastErr = msg
+	f.mu.Unlock()
+}
+
 // Reset restarts the average and the lows. They are cumulative over a minute
 // of play, so after a loading screen or a settings change they describe a run
 // the user is no longer interested in.
@@ -132,7 +146,8 @@ func (f *FPSSource) Stop() {
 func (f *FPSSource) run() {
 	path, err := sidecar.Path(sidecar.PresentMon)
 	if err != nil {
-		return // not bundled in this build
+		f.setErr("PresentMon is not bundled in this build")
+		return
 	}
 
 	// The usual reason for failing to start is missing elevation, which will
@@ -144,6 +159,7 @@ func (f *FPSSource) run() {
 		if f.streamOnce(path) {
 			failures = 0
 		} else if failures++; failures >= maxFailures {
+			f.setErr("PresentMon could not start — frame capture needs administrator rights")
 			return
 		}
 		if f.stopped() {
@@ -176,7 +192,7 @@ func (f *FPSSource) streamOnce(path string) bool {
 	}
 
 	f.mu.Lock()
-	f.cmd, f.running = cmd, true
+	f.cmd, f.running, f.lastErr = cmd, true, ""
 	f.mu.Unlock()
 
 	f.consume(stdout)

@@ -67,8 +67,19 @@ whole recording, including the moment a game starts.</summary>
   sparklines, adjustable opacity and screen anchoring. Works over windowed and
   borderless-fullscreen games, and system-wide shortcuts toggle it
   (`Ctrl+Alt+H`) or restart the averages for a fresh run (`Ctrl+Alt+B`)
-  without leaving the game. Both are rebindable in Settings, which also says so
-  when another application already holds one.
+  without leaving the game. The overlay can also be made click-through
+  (`Ctrl+Alt+T`), so stray clicks land in the game instead of the HUD. All
+  shortcuts are rebindable in Settings, which also says so when another
+  application already holds one.
+- **Threshold alerts** — a Windows notification and an in-app toast when CPU
+  or GPU temperature, RAM usage or a drive's fill level crosses its limit.
+  Limits are configurable per rule; an alert fires once per incident and
+  re-arms only after the value settles, so one hot afternoon is one
+  notification, not a stream of them.
+- **Built-in updates** — the app checks the GitHub releases once a day (can be
+  turned off) and updates itself with one click from the About tab: the new
+  executable is downloaded and swapped in place, no reinstall, settings and
+  recordings untouched.
 
 ## Download
 

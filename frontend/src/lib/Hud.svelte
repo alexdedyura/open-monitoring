@@ -48,9 +48,14 @@
     <div class="mb-1 flex items-center gap-2">
       <Logo size={14} />
       <span class="text-[9px] uppercase tracking-[0.16em] text-white/50">Open Monitoring</span>
-      {#if live.rec.active}
-        <span class="rec-dot ml-auto h-1.5 w-1.5 rounded-full bg-rec" title="Recording"></span>
-      {/if}
+      <span class="ml-auto flex items-center gap-1.5">
+        {#if live.cfg?.hud.clickThrough}
+          <span class="text-[10px] leading-none text-white/40" title="Click-through: the mouse passes into the game">⊘</span>
+        {/if}
+        {#if live.rec.active}
+          <span class="rec-dot h-1.5 w-1.5 rounded-full bg-rec" title="Recording"></span>
+        {/if}
+      </span>
     </div>
 
     {#if hover}

@@ -11,7 +11,9 @@ import (
 	"context"
 	"path/filepath"
 	"sync"
+	"time"
 
+	"github.com/creativeprojects/go-selfupdate"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"open-monitoring/internal/config"
@@ -25,10 +27,19 @@ import (
 type App struct {
 	ctx context.Context
 
+	version   string // from wails.json, embedded by main
 	cfg       config.Config
 	collector *metrics.Collector
 	store     *store.Store
 	stress    *stress.Runner
+
+	// Threshold-alert state, keyed by rule id. See alerts.go.
+	alertMu sync.Mutex
+	alerts  map[string]*alertState
+
+	// The release found by the last update check, kept for ApplyUpdate.
+	updMu      sync.Mutex
+	updRelease *selfupdate.Release
 
 	// The expensive half of the machine description never changes, so it is
 	// gathered once. Wails does not promise that binding calls are serialised,
@@ -53,12 +64,13 @@ type App struct {
 const (
 	hotkeyToggle = iota
 	hotkeyReset
+	hotkeyClickThrough
 )
 
 // New builds the app. The stress runner is created here rather than in Startup
 // because the frontend may ask for its status before the window is ready.
-func New() *App {
-	a := &App{}
+func New(version string) *App {
+	a := &App{version: version, alerts: map[string]*alertState{}}
 	a.stress = stress.NewRunner(a.emitStress)
 	return a
 }
@@ -75,10 +87,20 @@ func (a *App) Startup(ctx context.Context) {
 	}
 	a.store = st
 
+	// Retention is opt-in (0 keeps everything) and only ever touches finished
+	// recordings.
+	if st != nil && a.cfg.KeepSessionsDays > 0 {
+		cutoff := time.Now().AddDate(0, 0, -a.cfg.KeepSessionsDays).UnixMilli()
+		if err := st.DeleteSessionsBefore(cutoff); err != nil {
+			runtime.LogErrorf(ctx, "session retention: %v", err)
+		}
+	}
+
 	a.collector = metrics.NewCollector(a.cfg.SampleIntervalMs, a.onSample, a.onFPS)
 	a.collector.Start()
 
 	a.registerHotkeys()
+	go a.watchUpdates()
 }
 
 // registerHotkeys claims the two system-wide shortcuts. A combination another
@@ -87,8 +109,9 @@ func (a *App) Startup(ctx context.Context) {
 // is the only way the user can tell a dead shortcut from a broken feature.
 func (a *App) registerHotkeys() {
 	keys, errs := hotkey.Register([]hotkey.Binding{
-		hotkeyToggle: {Combo: a.cfg.Hud.HotkeyToggle, Do: a.ToggleHud},
-		hotkeyReset:  {Combo: a.cfg.Hud.HotkeyReset, Do: a.ResetFPSStats},
+		hotkeyToggle:       {Combo: a.cfg.Hud.HotkeyToggle, Do: a.ToggleHud},
+		hotkeyReset:        {Combo: a.cfg.Hud.HotkeyReset, Do: a.ResetFPSStats},
+		hotkeyClickThrough: {Combo: a.cfg.Hud.HotkeyClickThrough, Do: a.ToggleClickThrough},
 	})
 	for _, err := range errs {
 		if err != nil {
@@ -137,9 +160,11 @@ func (a *App) Shutdown(ctx context.Context) {
 }
 
 // onSample runs on the collector's goroutine for every new sample: it pushes
-// the sample to the frontend and, while recording, into the session.
+// the sample to the frontend, checks it against the alert thresholds and,
+// while recording, into the session.
 func (a *App) onSample(s metrics.Sample) {
 	runtime.EventsEmit(a.ctx, "sample", s)
+	a.checkAlerts(s)
 	a.record(s)
 }
 

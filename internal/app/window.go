@@ -72,6 +72,10 @@ func (a *App) enterHud() {
 	x, y := hudPosition(a.cfg.Hud)
 	runtime.WindowSetPosition(a.ctx, x, y)
 
+	if a.cfg.Hud.ClickThrough {
+		applyClickThrough(true)
+	}
+
 	// Wails' always-on-top is a one-shot flag, which a borderless-fullscreen
 	// game overrides when it takes focus. See window_windows.go.
 	startTopmostKeeper()
@@ -79,6 +83,7 @@ func (a *App) enterHud() {
 
 func (a *App) leaveHud() {
 	stopTopmostKeeper()
+	applyClickThrough(false) // the dashboard must always take the mouse
 
 	a.cfg.Hud.W, a.cfg.Hud.H = runtime.WindowGetSize(a.ctx)
 	if a.cfg.Hud.Anchor == "free" {
@@ -93,6 +98,27 @@ func (a *App) leaveHud() {
 		runtime.WindowSetSize(a.ctx, a.win.dashW, a.win.dashH)
 		runtime.WindowSetPosition(a.ctx, a.win.dashX, a.win.dashY)
 	}
+}
+
+// SetClickThrough switches whether the overlay ignores the mouse. Persisted,
+// applied immediately while the HUD is up, and announced via the
+// "clickthrough" event so the HUD indicator and Settings stay in step.
+func (a *App) SetClickThrough(on bool) {
+	a.win.mu.Lock()
+	a.cfg.Hud.ClickThrough = on
+	if a.win.hudActive {
+		applyClickThrough(on)
+	}
+	a.win.mu.Unlock()
+
+	config.Save(a.cfg)
+	runtime.EventsEmit(a.ctx, "clickthrough", on)
+}
+
+// ToggleClickThrough exists for the hotkey: a click-through overlay cannot be
+// clicked back to normal, so the keyboard has to be able to do it.
+func (a *App) ToggleClickThrough() {
+	a.SetClickThrough(!a.cfg.Hud.ClickThrough)
 }
 
 // hudPosition resolves where the overlay should appear: a fixed corner of the

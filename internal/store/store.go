@@ -144,6 +144,18 @@ func (s *Store) DeleteSession(id int64) error {
 	return err
 }
 
+// DeleteSessionsBefore removes finished sessions whose recording ended before
+// cutoff (unix milliseconds). A session still being recorded has no end time
+// yet and is never touched.
+func (s *Store) DeleteSessionsBefore(cutoff int64) error {
+	if _, err := s.db.Exec(`DELETE FROM samples WHERE session_id IN
+		(SELECT id FROM sessions WHERE ended_at > 0 AND ended_at < ?)`, cutoff); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM sessions WHERE ended_at > 0 AND ended_at < ?`, cutoff)
+	return err
+}
+
 func (s *Store) SessionName(id int64) (string, error) {
 	var name string
 	err := s.db.QueryRow(`SELECT name FROM sessions WHERE id = ?`, id).Scan(&name)
