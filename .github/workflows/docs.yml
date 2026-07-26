@@ -6,6 +6,12 @@ on:
     paths:
       - "docs/**"
       - ".github/workflows/docs.yml"
+  # Build-only on pull requests, so a broken site — or a broken edit to this
+  # file — is caught before it reaches main. Nothing is published from a PR.
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -13,8 +19,10 @@ permissions:
   pages: write
   id-token: write
 
+# Keyed by ref so PR builds never queue behind — or hold up — a real deploy;
+# every push to the default branch still shares one group, as Pages requires.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -40,16 +48,19 @@ jobs:
 
       # enablement creates the Pages site on first run, so the repository
       # does not have to be switched to "GitHub Actions" by hand.
-      - uses: actions/configure-pages@v6
+      - if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v6
         with:
           enablement: true
 
-      - uses: actions/upload-pages-artifact@v5
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs/dist
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
