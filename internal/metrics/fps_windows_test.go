@@ -142,18 +142,91 @@ func TestFrameMsReportsTheWorstRecentFrame(t *testing.T) {
 		names:  map[uint32]string{1: "game"},
 	}
 	now := time.Now()
+
+	// An old hitch, then half a second of smooth frames, then a recent one.
+	// Only the recent one belongs to this point of the graph; the old one was
+	// drawn seconds ago and is far outside the window walked back over.
+	f.frames[1] = append(f.frames[1], frameTime{at: now, ms: 99})
 	for i := 0; i < 60; i++ {
 		f.frames[1] = append(f.frames[1], frameTime{at: now, ms: 8})
 	}
-	f.frames[1] = append(f.frames[1], frameTime{at: now, ms: 42}) // one hitch
+	f.frames[1] = append(f.frames[1], frameTime{at: now, ms: 42})
 
 	if got := f.metricsForLocked(1, now).FrameMs; got != 42 {
-		t.Errorf("frameMs = %v, want the 42 ms hitch", got)
+		t.Errorf("frameMs = %v, want the recent 42 ms hitch", got)
+	}
+}
+
+// PresentMon writes to a pipe, and the C runtime buffers it: rows arrive in
+// bursts of a few hundred, not one per frame. Windowing on arrival time left
+// the readout at zero between bursts and then jumping when one landed, which
+// is exactly what the counter looked like in a game.
+func TestBurstyDeliveryStillReportsARate(t *testing.T) {
+	f := &FPSSource{
+		frames: map[uint32][]frameTime{},
+		names:  map[uint32]string{1: "game"},
+	}
+	now := time.Now()
+
+	// One burst of a hundred 10 ms frames, delivered 800 ms ago and nothing
+	// since — longer than the half-second the current rate is measured over.
+	arrived := now.Add(-800 * time.Millisecond)
+	for i := 0; i < 100; i++ {
+		f.frames[1] = append(f.frames[1], frameTime{at: arrived, ms: 10})
 	}
 
-	// An old hitch belongs to an earlier graph point, not this one.
-	f.frames[1] = append(f.frames[1], frameTime{at: now.Add(-time.Second), ms: 99})
-	if got := f.metricsForLocked(1, now).FrameMs; got != 42 {
-		t.Errorf("frameMs = %v, want 42 — a second-old frame is outside the graph window", got)
+	if got := f.metricsForLocked(1, now).Cur; got != 100 {
+		t.Errorf("cur = %v fps, want 100 — a burst that has stopped arriving is not zero frames", got)
+	}
+}
+
+// A process that has genuinely stopped presenting reports nothing at all,
+// rather than a rate computed from frames that are half a minute old.
+func TestStoppedProcessReportsNothing(t *testing.T) {
+	f := &FPSSource{
+		frames: map[uint32][]frameTime{},
+		names:  map[uint32]string{1: "game"},
+	}
+	now := time.Now()
+	for i := 0; i < 100; i++ {
+		f.frames[1] = append(f.frames[1], frameTime{at: now.Add(-10 * time.Second), ms: 10})
+	}
+
+	if m := f.metricsForLocked(1, now); m != nil {
+		t.Errorf("got %+v, want nothing for a process that stopped presenting", m)
+	}
+}
+
+// Reset clears what it says it clears. The average and the lows restart; the
+// current rate and the graph must not blink out, so the last frames survive.
+func TestResetKeepsTheLiveReadout(t *testing.T) {
+	f := &FPSSource{
+		frames: map[uint32][]frameTime{},
+		names:  map[uint32]string{1: "game"},
+	}
+	now := time.Now()
+	for i := 0; i < 2000; i++ {
+		f.frames[1] = append(f.frames[1], frameTime{at: now, ms: 10})
+	}
+
+	before := f.metricsForLocked(1, now)
+	if before.Low1 == 0 || before.Low01 == 0 {
+		t.Fatalf("expected lows over 2000 frames, got %+v", before)
+	}
+
+	f.Reset()
+
+	after := f.metricsForLocked(1, now)
+	if after == nil {
+		t.Fatal("reset left nothing to report")
+	}
+	if after.Cur != before.Cur {
+		t.Errorf("cur = %v after reset, want it unchanged at %v", after.Cur, before.Cur)
+	}
+	if after.Low1 != 0 || after.Low01 != 0 {
+		t.Errorf("lows = %v / %v after reset, want them withheld until the window refills", after.Low1, after.Low01)
+	}
+	if n := len(f.frames[1]); n > 100 {
+		t.Errorf("kept %d frames after reset, want only the last half second", n)
 	}
 }

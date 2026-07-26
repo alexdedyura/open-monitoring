@@ -159,10 +159,23 @@
       <input type="range" min="0.2" max="1" step="0.05" class="w-full accent-white" bind:value={cfg.hud.opacity} />
     </label>
 
+    <div class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink2">
+      <span>
+        <kbd class="rounded border border-line bg-card2 px-1.5 py-0.5 font-mono text-[11px] text-ink">{cfg.hud.hotkeyToggle}</kbd>
+        show / hide the overlay
+      </span>
+      <span>
+        <kbd class="rounded border border-line bg-card2 px-1.5 py-0.5 font-mono text-[11px] text-ink">{cfg.hud.hotkeyReset}</kbd>
+        restart average and lows
+      </span>
+    </div>
+
     <p class="text-xs leading-relaxed text-mut">
       The HUD is a compact always-on-top overlay: drag it anywhere, resize by the
       edges — position and size are remembered. It stays above windowed and
-      borderless-fullscreen games (exclusive fullscreen hides any overlay).
+      borderless-fullscreen games (exclusive fullscreen hides any overlay). Both
+      shortcuts work while a game has focus, and can be changed in
+      <code class="font-mono">config.json</code>.
     </p>
   </div>
 

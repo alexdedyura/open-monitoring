@@ -1,6 +1,13 @@
 <script>
   // Minimal canvas sparkline for the HUD. uPlot would bring axes, legend and
   // cursor machinery that an always-on-top overlay has no room for.
+  //
+  // Points arrive in discrete steps — one per frame-rate event — but the line
+  // scrolls continuously: redrawing only on arrival made it jump a whole point
+  // at a time, which next to a game running at 100+ fps reads as stutter. Each
+  // animation frame draws the same data shifted by how far along we are to the
+  // next point, so the newest sample slides in from the right edge instead of
+  // appearing on it.
   let {
     values = [],
     color = '#e66767',
@@ -13,7 +20,14 @@
   let canvas
   let box
 
-  function draw() {
+  // When the newest point arrived, and how far apart points have been coming.
+  // The interval is measured rather than assumed: it is the backend's emit
+  // cadence, and a wrong guess would make the scroll drift ahead or lag behind.
+  let lastAt = 0
+  let interval = 100
+  let frame = 0
+
+  function draw(progress) {
     if (!canvas || !box) return
     const dpr = window.devicePixelRatio || 1
     const w = box.clientWidth
@@ -46,6 +60,9 @@
 
     const n = values.length
     const stepX = w / Math.max(1, n - 1)
+    // The newest point reaches the right edge exactly as the next one is due;
+    // everything older is carried left with it, and the oldest clips off-canvas.
+    const xOf = (i) => w - (n - 1 - i + 1 - progress) * stepX
     const yOf = (v) => {
       const t = (v - lo) / (hi - lo)
       return invert ? t * (height - 2) + 1 : height - 1 - t * (height - 2)
@@ -54,40 +71,70 @@
     // Filled area under the curve, then the curve itself.
     ctx.beginPath()
     let started = false
+    let firstX = 0
+    let lastX = 0
     for (let i = 0; i < n; i++) {
       const v = values[i]
       if (v == null || !isFinite(v)) continue
-      const x = i * stepX
+      const x = xOf(i)
       const y = yOf(v)
       if (!started) {
         ctx.moveTo(x, y)
+        firstX = x
         started = true
       } else {
         ctx.lineTo(x, y)
       }
+      lastX = x
     }
     ctx.strokeStyle = color
     ctx.lineWidth = 1.5
     ctx.lineJoin = 'round'
     ctx.stroke()
 
-    ctx.lineTo((n - 1) * stepX, invert ? 0 : height)
-    ctx.lineTo(0, invert ? 0 : height)
+    ctx.lineTo(lastX, invert ? 0 : height)
+    ctx.lineTo(firstX, invert ? 0 : height)
     ctx.closePath()
     ctx.fillStyle = color + '25'
     ctx.fill()
   }
 
+  // One animation frame per display refresh while data is flowing, then idle.
+  // An overlay that keeps a rAF loop alive over a paused game would be burning
+  // a slice of the frame budget it exists to measure.
+  function tick() {
+    const since = performance.now() - lastAt
+    draw(Math.min(since / interval, 1))
+
+    if (since < interval * 2 + 200) {
+      frame = requestAnimationFrame(tick)
+    } else {
+      frame = 0
+    }
+  }
+
   $effect(() => {
-    void values
-    draw()
+    void values // a new array means a new point landed
+
+    const now = performance.now()
+    if (lastAt) {
+      // Smoothed, and bounded either side of anything the backend plausibly
+      // emits, so one late event cannot stretch the scroll for seconds.
+      const dt = Math.min(Math.max(now - lastAt, 30), 1000)
+      interval = interval * 0.7 + dt * 0.3
+    }
+    lastAt = now
+
+    if (!frame) frame = requestAnimationFrame(tick)
   })
 
   $effect(() => {
-    const ro = new ResizeObserver(draw)
+    const ro = new ResizeObserver(() => draw(1))
     if (box) ro.observe(box)
     return () => ro.disconnect()
   })
+
+  $effect(() => () => cancelAnimationFrame(frame))
 
   const latest = $derived.by(() => {
     for (let i = values.length - 1; i >= 0; i--) {

@@ -50,13 +50,24 @@ whole recording, including the moment a game starts.</summary>
   the model, bus, health, SMART temperature, remaining life and power-on hours.
 - **System panel** — a hardware summary at a glance: CPU, GPU, RAM modules,
   motherboard, OS and uptime, drives.
+- **Stress test** — burn in the CPU, memory, GPU and storage, each on its own
+  or all at once, for a minute up to an hour or until you stop it. The CPU load
+  rotates through AVX-512/AVX2 FMA, AES-NI, the SHA extensions, bignum and cache
+  kernels; memory and VRAM are filled, streamed and verified against a written
+  pattern, so a bad module or an unstable memory overclock shows up as a
+  mismatch count; storage is measured unbuffered, sequential and 4 KB random at
+  queue depth 16. Throughput, peak temperatures, clocks and power are reported
+  live. No extra driver or runtime — the GPU work goes through the OpenCL
+  runtime your display driver already installs.
 - **Recording** — capture every metric for 1–4 hours, then browse it as
   zoomable charts (drag to zoom, double-click to reset) or export every chart
   as one shareable PNG snapshot.
 - **HUD overlay** — a compact frameless overlay styled like a classic in-game
   OSD: sections per hardware with per-row toggles, FPS and frame-time
   sparklines, adjustable opacity and screen anchoring. Works over windowed and
-  borderless-fullscreen games.
+  borderless-fullscreen games, and system-wide shortcuts toggle it
+  (`Ctrl+Alt+H`) or restart the averages for a fresh run (`Ctrl+Alt+B`)
+  without leaving the game.
 
 ## Download
 
@@ -102,7 +113,6 @@ how the data is collected.
 
 ## Roadmap
 
-- Global hotkey for HUD toggle
 - Per-process metrics
 - Russian localisation
 

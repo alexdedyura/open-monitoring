@@ -6,6 +6,7 @@
   import Splash from './lib/Splash.svelte'
   import Dashboard from './lib/Dashboard.svelte'
   import Sessions from './lib/Sessions.svelte'
+  import StressTest from './lib/StressTest.svelte'
   import Settings from './lib/Settings.svelte'
   import About from './lib/About.svelte'
   import Hud from './lib/Hud.svelte'
@@ -72,6 +73,7 @@
   const tabs = [
     {id: 'monitor', label: 'Monitor'},
     {id: 'sessions', label: 'Sessions'},
+    {id: 'stress', label: 'Stress test'},
     {id: 'settings', label: 'Settings'},
     {id: 'about', label: 'About'},
   ]
@@ -108,6 +110,10 @@
 
       {#if live.rec.active && live.view !== 'monitor'}
         <span class="rec-dot mr-3 h-2 w-2 rounded-full bg-rec" title="Recording"></span>
+      {/if}
+
+      {#if live.stress.running && live.view !== 'stress'}
+        <span class="rec-dot mr-3 h-2 w-2 rounded-full bg-vram" title="Stress test running"></span>
       {/if}
 
       <button
@@ -164,6 +170,8 @@
         <Dashboard />
       {:else if live.view === 'sessions'}
         <Sessions />
+      {:else if live.view === 'stress'}
+        <StressTest />
       {:else if live.view === 'settings' && live.cfg}
         <Settings />
       {:else if live.view === 'about'}

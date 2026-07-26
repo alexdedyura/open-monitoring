@@ -12,4 +12,6 @@ func (f *FPSSource) Running() bool { return false }
 
 func (f *FPSSource) Metrics() *FPSMetrics { return nil }
 
+func (f *FPSSource) Reset() {}
+
 func (f *FPSSource) Stop() {}

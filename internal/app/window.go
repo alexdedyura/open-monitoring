@@ -41,6 +41,27 @@ func (a *App) SetHudMode(on bool) {
 	a.win.hudActive = on
 }
 
+// ToggleHud flips between the dashboard and the overlay. It exists for the
+// system-wide hotkey, which fires while a game holds focus and therefore
+// cannot go through the frontend — so this tells the frontend afterwards
+// instead, via the "hud" event.
+func (a *App) ToggleHud() {
+	a.win.mu.Lock()
+	on := !a.win.hudActive
+	a.win.mu.Unlock()
+
+	a.SetHudMode(on)
+	runtime.EventsEmit(a.ctx, "hud", on)
+}
+
+// ResetFPSStats restarts the frame-rate average and lows, for the hotkey that
+// marks the start of a run worth measuring.
+func (a *App) ResetFPSStats() {
+	if a.collector != nil {
+		a.collector.ResetFPS()
+	}
+}
+
 func (a *App) enterHud() {
 	a.win.dashX, a.win.dashY = runtime.WindowGetPosition(a.ctx)
 	a.win.dashW, a.win.dashH = runtime.WindowGetSize(a.ctx)
