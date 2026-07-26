@@ -5,12 +5,32 @@
   import {BrowserOpenURL} from '../../wailsjs/runtime/runtime.js'
   import Logo from './Logo.svelte'
   import readme from '../../../README.md?raw'
+  // The version comes from wails.json because that is what already stamps the
+  // executable's file properties and the installer's pages — one place to bump,
+  // three that agree. This tab is where a bug report starts, so the build has
+  // to be nameable from inside the app.
+  import wailsConfig from '../../../wails.json'
 
+  const VERSION = wailsConfig.info.productVersion
   const REPO_URL = 'https://github.com/alexdedyura/open-monitoring'
 
-  // The screenshots section is for GitHub: its relative image paths cannot
-  // resolve inside the WebView, and showing the app to itself is pointless.
-  const html = marked.parse(readme.replace(/^## Screenshots\n[\s\S]*?(?=^## )/m, ''))
+  // Sections that only make sense outside the app: the screenshots are for
+  // GitHub — their repo-relative paths cannot resolve inside the WebView, and
+  // showing the app to itself is pointless — and Download explains how to
+  // obtain the program the reader is already running.
+  //
+  // \r?\n matters: the README is checked out with CRLF on Windows, and a
+  // \n-only pattern matches nothing at all. That is how the screenshots used to
+  // survive this and render as captions with no images under them.
+  const DROPPED = ['Screenshots', 'Download']
+
+  const html = marked.parse(
+    DROPPED.reduce(
+      (text, heading) =>
+        text.replace(new RegExp(String.raw`^## ${heading}\r?\n[\s\S]*?(?=^## )`, 'm'), ''),
+      readme,
+    ),
+  )
 
   // All links leave the WebView for the system browser — the app is not a
   // web browser and has no navigation chrome to come back with.
@@ -28,7 +48,7 @@
     <Logo size={34} />
     <div class="min-w-0 grow">
       <div class="text-sm text-ink">Open Monitoring</div>
-      <div class="font-mono text-[10px] text-mut">GPL-3.0 · open source</div>
+      <div class="font-mono text-[10px] text-mut">v{VERSION} · GPL-3.0 · open source</div>
     </div>
     <button
       class="flex items-center gap-1.5 rounded-md border border-line bg-card2 px-3 py-1.5 font-mono text-xs text-ink hover:border-ink2"
