@@ -48,11 +48,20 @@ Every exported method on `app.App` becomes a frontend binding — Wails generate
 
 - **gopsutil v4** (`system.go`) — CPU load, RAM, disk I/O, network.
 - **lhm-bridge** (`sensors.go`) — GPU for all vendors (NVAPI/ADL/IGCL), CPU
-  package temp+power, storage wear, SMBIOS board/RAM. One typed JSON line per
-  2 s on stdout; all sensor-NAME knowledge lives on the C# side.
+  package temp+power, SMBIOS board/RAM. One typed JSON line per 2 s on stdout;
+  all sensor-NAME knowledge lives on the C# side.
 - **PresentMon** (`fps_windows.go`) — frame times, needs elevation.
 - **WMI** (`sysinfo/smart/cpuclock_windows.go`) — drive identity + SMART, and
   the driver-free CPU boost clock (fallback when PawnIO is absent).
+
+## Data location
+
+Everything the app writes lives in a hidden `.open-monitoring` folder next to
+the exe (`config.Dir()`): `config.json`, `sessions.db`, unpacked helpers under
+`bin/`, and the WebView2 cache under `webview/`. Portable and installed builds
+follow the same rule; files from the pre-portable `%AppData%\OpenMonitoring`
+home are migrated in once and the old helper cache is removed. The manifest is
+`requireAdministrator`, which is what makes Program Files writable.
 
 ## Gotchas that will bite again
 

@@ -49,22 +49,12 @@ type SensorReading struct {
 		GPUMetrics
 	} `json:"gpu"`
 
-	Storage []StorageHealth `json:"storage"`
-
 	// System is the SMBIOS machine description. It needs no privileges and no
 	// driver, so the helper reads it instead of a second WMI round trip.
 	System *struct {
 		Board  string   `json:"board"`
 		Memory *RAMInfo `json:"memory"`
 	} `json:"system"`
-}
-
-// StorageHealth is the wear data the helper reads from a drive's SMART data.
-type StorageHealth struct {
-	Name          string  `json:"name"`
-	TempC         float64 `json:"tempC"`
-	LifePercent   float64 `json:"lifePercent"`
-	DataWrittenGb float64 `json:"dataWrittenGb"`
 }
 
 // sensorIntervalMs is how often the helper samples. Hardware sensors change

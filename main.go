@@ -7,6 +7,7 @@ package main
 import (
 	"embed"
 	"log"
+	"path/filepath"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -14,6 +15,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 
 	"open-monitoring/internal/app"
+	"open-monitoring/internal/config"
 )
 
 //go:embed all:frontend/dist
@@ -42,6 +44,10 @@ func main() {
 			WindowIsTranslucent:  true,
 			BackdropType:         windows.None,
 			DisableWindowIcon:    true,
+			// Everything the app writes lives in the hidden folder next to the
+			// exe — including the WebView2 cache, which would otherwise land in
+			// %AppData%.
+			WebviewUserDataPath: filepath.Join(config.Dir(), "webview"),
 		},
 	})
 	if err != nil {

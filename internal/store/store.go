@@ -77,20 +77,18 @@ func (s *Store) AppendSamples(sessionID int64, batch []metrics.Sample) error {
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback() // no-op once committed
 	stmt, err := tx.Prepare(`INSERT INTO samples(session_id, t, data) VALUES(?, ?, ?)`)
 	if err != nil {
-		tx.Rollback()
 		return err
 	}
 	defer stmt.Close()
 	for _, smp := range batch {
 		data, err := json.Marshal(smp)
 		if err != nil {
-			tx.Rollback()
 			return err
 		}
 		if _, err := stmt.Exec(sessionID, smp.T, string(data)); err != nil {
-			tx.Rollback()
 			return err
 		}
 	}

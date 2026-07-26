@@ -4,7 +4,7 @@
 
 // Entity colors — validated categorical palette (dataviz skill), one set per
 // theme. Chart pairs within one chart are adjacent validated slots.
-export const PALETTES = {
+const PALETTES = {
   dark: {
     cpu: '#3987e5',
     gpu: '#d95926',

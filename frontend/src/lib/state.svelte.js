@@ -3,7 +3,7 @@ import * as api from '../../wailsjs/go/app/App.js'
 import {newBuffers, appendSample} from './chartDefs.js'
 
 // Client-side history window: up to 30 min of samples feed the live charts.
-export const CAP_SECONDS = 1800
+const CAP_SECONDS = 1800
 
 // Ring buffers are plain (non-reactive) arrays read directly by uPlot;
 // `live.tick` is the reactive signal that a new sample arrived.
@@ -13,7 +13,7 @@ export const buf = newBuffers()
 // which the backend emits several times per sample — a game's frame rate
 // changes far faster than the sampling interval. Same non-reactive deal as
 // `buf`, with `live.fpsTick` as the signal.
-export const FPS_POINTS = 150 // ~15 s at the backend's FPS cadence
+const FPS_POINTS = 150 // ~15 s at the backend's FPS cadence
 export const fpsBuf = {fps: [], frameMs: []}
 
 export const live = $state({

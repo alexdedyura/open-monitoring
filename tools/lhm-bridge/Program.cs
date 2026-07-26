@@ -14,10 +14,10 @@
 //
 // Usage: lhm-bridge.exe [intervalMs] [parentPid]
 //
-// Privileges: storage SMART needs elevation. CPU package temperature and power
-// additionally need the PawnIO driver (https://pawnio.eu) — when it is absent
-// those fields are simply null and "pawnIo" reports false, which the app
-// surfaces in Settings.
+// Privileges: CPU package temperature and power need the PawnIO driver
+// (https://pawnio.eu) — when it is absent those fields are simply null and
+// "pawnIo" reports false, which the app surfaces in Settings. Drive SMART is
+// deliberately not read here: the app gets it from WMI without a helper.
 
 using System;
 using System.Collections.Generic;
@@ -51,7 +51,6 @@ var computer = new Computer
     IsCpuEnabled = true,
     IsGpuEnabled = true,
     IsMemoryEnabled = true,
-    IsStorageEnabled = true,
     IsMotherboardEnabled = true,
 };
 
@@ -100,8 +99,6 @@ internal sealed class Reading
 
     public GpuReading? Gpu { get; init; }
 
-    public List<StorageReading>? Storage { get; init; }
-
     /// <summary>Static machine description from SMBIOS; unchanging, but cheap to resend.</summary>
     public SystemReading? System { get; init; }
 
@@ -120,12 +117,6 @@ internal sealed class Reading
                           .Select(CpuReading.From)
                           .FirstOrDefault(),
             Gpu = PickGpu(hardware),
-            Storage = hardware.Where(h => h.HardwareType == HardwareType.Storage)
-                              .Select(StorageReading.From)
-                              .Where(s => s.HasData)
-                              .ToList() is { Count: > 0 } list
-                ? list
-                : null,
         };
     }
 
@@ -284,37 +275,6 @@ internal sealed class GpuReading
         // Control is the fan duty cycle in percent; SensorType.Fan would be RPM.
         FanPercent = Sensors.Pick(gpu, SensorType.Control, "GPU Fan"),
     };
-}
-
-internal sealed class StorageReading
-{
-    public string? Name { get; init; }
-
-    public double? TempC { get; init; }
-
-    /// <summary>Remaining life in percent.</summary>
-    public double? LifePercent { get; init; }
-
-    public double? DataWrittenGb { get; init; }
-
-    [JsonIgnore]
-    public bool HasData => TempC is > 0 || LifePercent is > 0 || DataWrittenGb is > 0;
-
-    public static StorageReading From(IHardware drive)
-    {
-        // Drives report either remaining life directly or the percentage of
-        // rated life already used, depending on the SMART attribute set.
-        double? remaining = Sensors.Pick(drive, SensorType.Level, "Remaining Life");
-        double? used = Sensors.Pick(drive, SensorType.Level, "Percentage Used");
-
-        return new StorageReading
-        {
-            Name = drive.Name,
-            TempC = Sensors.Pick(drive, SensorType.Temperature, "Temperature"),
-            LifePercent = remaining ?? (used is not null ? 100 - used : null),
-            DataWrittenGb = Sensors.Pick(drive, SensorType.Data, "Data Written"),
-        };
-    }
 }
 
 /// <summary>Name-based lookup over one hardware node's sensor list.</summary>

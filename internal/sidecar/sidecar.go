@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"open-monitoring/internal/config"
 )
 
 // Helper binaries, staged into bin/ by build.ps1. The `all:` prefix keeps the
@@ -107,7 +109,7 @@ func findInRepo(name string) string {
 	return ""
 }
 
-// unpack writes the helper to the user's local app data, keyed by a hash of
+// unpack writes the helper to the app's data directory, keyed by a hash of
 // its contents. A new app version therefore lands on a new filename instead of
 // trying to overwrite a copy the previous run may still hold open, and stale
 // copies are pruned as they are superseded.
@@ -135,11 +137,7 @@ func unpack(name string, data []byte) (string, error) {
 }
 
 func cacheDir() (string, error) {
-	base, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(base, "OpenMonitoring", "bin")
+	dir := filepath.Join(config.Dir(), "bin")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}

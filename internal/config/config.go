@@ -1,4 +1,6 @@
-// Package config stores user settings as JSON in the app's data directory.
+// Package config stores user settings as JSON in the app's data directory —
+// a hidden ".open-monitoring" folder next to the executable, so the app is
+// fully portable and leaves nothing behind in AppData or the registry.
 //
 // Settings are small, read once at startup and written on every change, so the
 // whole file is loaded and saved as a unit. Load never fails: a missing or
@@ -11,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 )
 
 // currentVersion is bumped whenever a stored file needs fixing up on load.
@@ -83,16 +86,60 @@ func Default() Config {
 	}
 }
 
-// Dir is the app's data directory, created if missing. Config and the session
-// database live side by side there.
+var (
+	dirOnce sync.Once
+	dirPath string
+)
+
+// Dir is the app's data directory: a hidden ".open-monitoring" folder next to
+// the executable, shared by the config, the session database and the unpacked
+// helpers. A portable copy and an installed one follow the same rule — the
+// data always travels with the exe. Created on first use, and files from the
+// pre-portable AppData home are pulled in once.
 func Dir() string {
+	dirOnce.Do(func() {
+		base := "."
+		if exe, err := os.Executable(); err == nil {
+			base = filepath.Dir(exe)
+		}
+		dirPath = filepath.Join(base, ".open-monitoring")
+		os.MkdirAll(dirPath, 0o755)
+		hide(dirPath)
+		migrateLegacyDir(dirPath)
+	})
+	return dirPath
+}
+
+// migrateLegacyDir moves files saved by versions that kept their data in
+// %AppData%\OpenMonitoring, then clears out that home and the old helper
+// cache. Helpers re-unpack on demand, so only the data files are carried over.
+func migrateLegacyDir(dir string) {
+	if base, err := os.UserCacheDir(); err == nil {
+		os.RemoveAll(filepath.Join(base, "OpenMonitoring")) // unpacked helpers only
+	}
+
 	base, err := os.UserConfigDir()
 	if err != nil {
-		base = "."
+		return
 	}
-	dir := filepath.Join(base, "OpenMonitoring")
-	os.MkdirAll(dir, 0o755)
-	return dir
+	old := filepath.Join(base, "OpenMonitoring")
+	entries, err := os.ReadDir(old)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		src, dst := filepath.Join(old, e.Name()), filepath.Join(dir, e.Name())
+		if _, err := os.Stat(dst); err == nil || e.IsDir() {
+			continue // never overwrite data the new home already has
+		}
+		if os.Rename(src, dst) != nil {
+			// Rename fails across volumes; fall back to copy + delete.
+			if data, err := os.ReadFile(src); err == nil && os.WriteFile(dst, data, 0o644) == nil {
+				os.Remove(src)
+			}
+		}
+	}
+	os.Remove(old) // only succeeds once empty, which is the point
 }
 
 func path() string { return filepath.Join(Dir(), "config.json") }

@@ -8,7 +8,7 @@ const CHROME = {
 
 const MONO = '11px "Cascadia Mono", Consolas, monospace'
 
-export function hhmmss(t) {
+function hhmmss(t) {
   return new Date(t * 1000).toTimeString().slice(0, 8)
 }
 

@@ -75,15 +75,14 @@ type FPSMetrics struct {
 // DiskHealthView is one physical drive as shown in the storage panel: identity
 // from the Windows storage WMI namespace, wear data from its SMART counters.
 type DiskHealthView struct {
-	Model         string  `json:"model"`
-	SizeGB        float64 `json:"sizeGb"`
-	Media         string  `json:"media"` // SSD / HDD / SCM / ""
-	Bus           string  `json:"bus"`   // NVMe / SATA / USB / ...
-	Health        string  `json:"health"`
-	TempC         float64 `json:"tempC"`
-	LifePercent   float64 `json:"lifePercent"` // remaining life
-	PowerOnHours  float64 `json:"powerOnHours"`
-	DataWrittenGB float64 `json:"dataWrittenGb"`
+	Model        string  `json:"model"`
+	SizeGB       float64 `json:"sizeGb"`
+	Media        string  `json:"media"` // SSD / HDD / SCM / ""
+	Bus          string  `json:"bus"`   // NVMe / SATA / USB / ...
+	Health       string  `json:"health"`
+	TempC        float64 `json:"tempC"`
+	LifePercent  float64 `json:"lifePercent"` // remaining life
+	PowerOnHours float64 `json:"powerOnHours"`
 }
 
 // RAMInfo describes the installed memory modules, read from SMBIOS by the

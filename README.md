@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo.svg" width="96" alt="Open Monitoring logo"></p>
+<p align="center"><img src="assets/logo.svg" width="160" alt="Open Monitoring logo"></p>
 
 # Open Monitoring
 
@@ -81,6 +81,10 @@ the rolling [**latest** release](https://github.com/alexdedyura/open-monitoring/
 - **Portable** (`open-monitoring.exe`) — a single file, no prerequisites; the
   PawnIO driver is offered on first launch.
 
+The app is fully portable either way: settings and recorded sessions live in a
+hidden `.open-monitoring` folder next to the executable — nothing is written to
+the registry or AppData.
+
 Windows 10/11, 64-bit. The app asks for administrator rights at launch — SMART
 counters and frame capture need them, same as MSI Afterburner.
 
@@ -97,7 +101,7 @@ More on why, and what to do if winget is unavailable, in the
 
 ## Building from source
 
-Requirements: Go 1.25+, Node.js 18+, the
+Requirements: Go 1.26+, Node.js 26+, the
 [Wails CLI](https://wails.io/docs/gettingstarted/installation) v2 and the .NET 8
 SDK (for the sensor helper — end users do not need .NET).
 

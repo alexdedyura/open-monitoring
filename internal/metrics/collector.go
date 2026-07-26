@@ -5,8 +5,8 @@
 //   - gopsutil (system.go)   — CPU load, memory, disk and network throughput.
 //     Pure Go, no privileges needed.
 //   - lhm-bridge (sensors.go) — GPU telemetry for every vendor, CPU package
-//     temperature and power, drive wear. A bundled helper process, because
-//     these live behind vendor APIs and a kernel driver.
+//     temperature and power. A bundled helper process, because these live
+//     behind vendor APIs and a kernel driver.
 //   - PresentMon (fps_*.go)  — frame times of the foreground application.
 //   - WMI (sysinfo_*.go, smart_*.go, cpuclock_*.go) — static machine
 //     description, drive identity, and a driver-free CPU clock.
@@ -18,7 +18,6 @@ import (
 	"context"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -240,30 +239,9 @@ func (c *Collector) DiskHealth() []DiskHealthView {
 	return out
 }
 
-// refreshDiskHealth re-reads drive identity and SMART counters from WMI, then
-// folds in the one field only the sensor helper reports: total bytes written.
+// refreshDiskHealth re-reads drive identity and SMART counters from WMI.
 func (c *Collector) refreshDiskHealth() {
 	disks := physicalDisks()
-
-	var wear []StorageHealth
-	if c.sensors != nil {
-		if r := c.sensors.Latest(); r != nil {
-			wear = r.Storage
-		}
-	}
-
-	// WMI and the helper name the same drive differently ("Samsung SSD 990 PRO
-	// 2TB" vs "Samsung SSD 990 PRO"), so match on either containing the other.
-	for i := range disks {
-		model := strings.ToLower(disks[i].Model)
-		for _, w := range wear {
-			name := strings.ToLower(w.Name)
-			if name != "" && (strings.Contains(model, name) || strings.Contains(name, model)) {
-				disks[i].DataWrittenGB = w.DataWrittenGb
-				break
-			}
-		}
-	}
 
 	c.diskMu.Lock()
 	c.diskHealth = disks

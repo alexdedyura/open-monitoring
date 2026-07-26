@@ -437,16 +437,3 @@ func (r *reporter) snapshot() JobStatus {
 		Stats:  slices.Clone(r.stats),
 	}
 }
-
-// sleep waits out d unless the run is cancelled first; it reports whether the
-// run is still alive, so workers can write `if !sleep(...) { return nil }`.
-func sleep(ctx context.Context, d time.Duration) bool {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-t.C:
-		return true
-	}
-}
