@@ -81,6 +81,14 @@ const (
 	DefaultHotkeyClickThrough = "Ctrl+Alt+T"
 )
 
+// Overlay width bounds, exposed because Settings renders the slider over them.
+// The height is not a setting: the HUD measures its own contents and asks the
+// window to match (see app.FitHudSize).
+const (
+	HudMinWidth = 240
+	HudMaxWidth = 520
+)
+
 // defaultHudMetrics mirrors a classic in-game OSD: a GPU block, a CPU block,
 // memory, and frame rate, each rendered as a titled section.
 func defaultHudMetrics() []string {
@@ -238,6 +246,19 @@ func Clamp(cfg *Config) {
 	case "free", "tl", "tr", "bl", "br":
 	default:
 		cfg.Hud.Anchor = "free"
+	}
+	// The overlay window cannot be resized by hand — it fits itself to the rows
+	// the user enabled — so its width is a setting, and the only size the
+	// frontend never gets to decide. Narrower than this and the value column
+	// collides with its label; wider and it stops being an overlay.
+	if cfg.Hud.W < HudMinWidth || cfg.Hud.W > HudMaxWidth {
+		cfg.Hud.W = Default().Hud.W
+	}
+	// The height is written by the overlay itself, so this only has to catch a
+	// hand-edited file; the real bound is the work area, which app.FitHudSize
+	// applies on the way in.
+	if cfg.Hud.H < 90 || cfg.Hud.H > 4000 {
+		cfg.Hud.H = Default().Hud.H
 	}
 
 	// An empty combination is how a file written before these existed reads,

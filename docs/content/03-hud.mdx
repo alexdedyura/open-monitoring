@@ -22,12 +22,13 @@ Titled sections per hardware, each with per-row toggles:
 
 ## Keyboard shortcuts
 
-Both are registered system-wide, so they work while a game has focus:
+All three are registered system-wide, so they work while a game has focus:
 
 | Shortcut | Does |
 |---|---|
 | `Ctrl+Alt+H` | Show or hide the overlay |
 | `Ctrl+Alt+B` | Restart the average and the 1% / 0.1% lows |
+| `Ctrl+Alt+T` | Toggle click-through (mouse passes into the game) |
 
 The reset is what you press at the start of a run worth measuring — a
 benchmark scene, a new area — so the cumulative numbers describe that and not
@@ -52,8 +53,14 @@ and would stop the letter reaching any other application, the game included.
 
 ## Positioning and appearance
 
-- **Screen anchoring** — free drag anywhere, or snap to any corner of the
-  screen.
+- **Screen anchoring** — **Free** leaves the overlay draggable and remembers
+  where you dropped it; any of the four corners pins it there for good. A pinned
+  overlay is not draggable, and it returns to its corner by itself after a
+  resolution change, a monitor being unplugged, or the taskbar changing size.
+- **Height is automatic.** The overlay measures its own contents and sizes the
+  window to fit, so it is exactly as tall as the rows you enabled and no taller.
+  There is nothing to drag: the window cannot be resized by hand.
+- **Width** is a setting, from 240 to 520 px.
 - **Opacity control** — from fully opaque to nearly transparent.
 - Every row can be toggled individually, so the HUD shows exactly what you
   care about and nothing else.
@@ -63,6 +70,13 @@ and would stop the letter reaching any other application, the game included.
 The HUD works over **windowed** and **borderless-fullscreen** games — it
 re-asserts its always-on-top status continuously, so games that steal the
 topmost slot do not push it behind.
+
+The overlay never takes the foreground. Showing it, moving it, or clicking it
+leaves the game active, which is what keeps a borderless-fullscreen game from
+minimising itself and keeps its mouse capture intact — the cursor stays where
+the game put it and mouse-look keeps working. The close button and dragging
+still respond; only keyboard focus never comes to the overlay, and it has
+nothing to type into.
 
 **Exclusive fullscreen** bypasses any desktop overlay: the frame never passes
 through the desktop compositor, so no window can draw over it without a D3D

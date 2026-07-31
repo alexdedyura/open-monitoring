@@ -13,7 +13,7 @@ export const buf = newBuffers()
 // which the backend emits several times per sample — a game's frame rate
 // changes far faster than the sampling interval. Same non-reactive deal as
 // `buf`, with `live.fpsTick` as the signal.
-const FPS_POINTS = 150 // ~15 s at the backend's FPS cadence
+export const FPS_POINTS = 150 // ~15 s at the backend's FPS cadence
 export const fpsBuf = {fps: [], frameMs: []}
 
 export const live = $state({

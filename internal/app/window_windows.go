@@ -38,6 +38,7 @@ const (
 	gwOwner       = 4
 	swpNoSize     = 0x0001
 	swpNoMove     = 0x0002
+	swpNoZOrder   = 0x0004
 	swpNoActivate = 0x0010
 	hwndTopmost   = ^uintptr(0) // HWND_TOPMOST == (HWND)-1
 
@@ -51,8 +52,57 @@ const (
 	gwlExStyle      = ^uintptr(19) // GWL_EXSTYLE == -20
 	wsExTransparent = 0x00000020
 	wsExLayered     = 0x00080000
+	wsExNoActivate  = 0x08000000
 	lwaAlpha        = 0x2
 )
+
+// applyOverlayStyles makes the window behave like an overlay while the HUD is
+// up, and like an ordinary application window again afterwards.
+//
+// WS_EX_NOACTIVATE is what stops a game from minimising itself. Wails raises
+// and moves the window with SetWindowPos calls that omit SWP_NOACTIVATE
+// (winc: SetAlwaysOnTop, SetPos), so showing the overlay handed it the
+// foreground — and a game running borderless-fullscreen minimises the instant
+// it loses focus. The same style is what keeps the mouse where it belongs:
+// Windows answers WM_MOUSEACTIVATE with MA_NOACTIVATE for such a window, so
+// moving over or clicking the overlay no longer pulls activation — and with it
+// keyboard and raw mouse input — away from the game. The clicks still arrive
+// here, which is why the close button and dragging keep working.
+//
+// Only SetWindowLongPtrW is needed: activation reads the style live, and a
+// SetWindowPos with SWP_FRAMECHANGED would recalculate a frame that has not
+// changed.
+func applyOverlayStyles(on bool) {
+	hwnd := findMainWindow()
+	if hwnd == 0 {
+		return
+	}
+	style, _, _ := procGetWindowLongPtrW.Call(hwnd, gwlExStyle)
+	if on {
+		style |= wsExNoActivate
+	} else {
+		style &^= wsExNoActivate
+	}
+	procSetWindowLongPtrW.Call(hwnd, gwlExStyle, style)
+}
+
+// moveWindowTo places the window in absolute screen coordinates, which is what
+// every position in this package is expressed in.
+//
+// runtime.WindowSetPosition cannot be used for it: winc's SetPos adds the
+// current monitor's work-area origin to whatever it is given, while
+// WindowGetPosition reports absolute coordinates — so the pair only round-trips
+// on a monitor whose work area starts at 0,0. A side- or top-docked taskbar, or
+// a second monitor, is enough to put the overlay somewhere other than the
+// corner it was told to sit in. SWP_NOACTIVATE for the same reason as above.
+func moveWindowTo(_ context.Context, x, y int) {
+	hwnd := findMainWindow()
+	if hwnd == 0 {
+		return
+	}
+	procSetWindowPos.Call(hwnd, 0, uintptr(x), uintptr(y), 0, 0,
+		swpNoSize|swpNoZOrder|swpNoActivate)
+}
 
 // applyClickThrough makes the window invisible to the mouse (or visible
 // again): clicks land on whatever is underneath, which for the HUD is the
@@ -134,10 +184,26 @@ func overlap(aStart, aEnd, bStart, bEnd int) int {
 	return end - start
 }
 
+// MaxOverlayHeight caps how tall the self-sizing overlay may grow: the work
+// area, less the margin the anchors keep on both sides. Enabling every metric
+// row and both frame-time graphs at once can ask for more height than a laptop
+// screen has, and a window taller than the desktop hangs off the bottom of it.
+func MaxOverlayHeight() int {
+	_, _, _, h := workArea()
+	if h <= 0 {
+		return 2000
+	}
+	return h - 2*anchorMargin
+}
+
+// anchorMargin is the gap an anchored overlay keeps from the edges of the work
+// area, so it never sits flush against the taskbar or the screen border.
+const anchorMargin = 16
+
 // AnchorPosition places a window of the given size in a corner of the primary
 // monitor's work area.
 func AnchorPosition(anchor string, w, h int) (int, int) {
-	const margin = 16
+	const margin = anchorMargin
 	ax, ay, aw, ah := workArea()
 
 	x, y := ax+margin, ay+margin
@@ -199,7 +265,13 @@ type topmostKeeper struct {
 
 var keeper topmostKeeper
 
-func (t *topmostKeeper) start() {
+// start re-asserts the overlay's Z-order, and its position too when `pin`
+// supplies one. An anchored overlay has no other way to stay put: nothing in
+// the app moves it, but Windows does — a resolution change, a monitor being
+// unplugged, the taskbar growing all shift a window that was flush against the
+// old work area. `pin` returns false while the overlay is free-placed, which is
+// the user's to position.
+func (t *topmostKeeper) start(pin func() (int, int, bool)) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.cancel != nil {
@@ -215,9 +287,17 @@ func (t *topmostKeeper) start() {
 			if hwnd == 0 {
 				hwnd = findMainWindow()
 			}
-			if hwnd != 0 {
+			// Checked as late as possible: this goroutine can be waiting on the
+			// app lock inside pin() while the HUD is being left, and must not
+			// move the window after the dashboard's geometry was restored.
+			if hwnd != 0 && ctx.Err() == nil {
 				// SWP_NOACTIVATE: never steal focus from the game while re-asserting.
-				procSetWindowPos.Call(hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
+				flags := uintptr(swpNoMove | swpNoSize | swpNoActivate)
+				x, y := 0, 0
+				if px, py, ok := pin(); ok {
+					x, y, flags = px, py, swpNoSize|swpNoActivate
+				}
+				procSetWindowPos.Call(hwnd, hwndTopmost, uintptr(x), uintptr(y), 0, 0, flags)
 			}
 			select {
 			case <-ctx.Done():
@@ -237,5 +317,5 @@ func (t *topmostKeeper) stop() {
 	}
 }
 
-func startTopmostKeeper() { keeper.start() }
-func stopTopmostKeeper()  { keeper.stop() }
+func startTopmostKeeper(pin func() (int, int, bool)) { keeper.start(pin) }
+func stopTopmostKeeper()                             { keeper.stop() }

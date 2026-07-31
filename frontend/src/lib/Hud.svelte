@@ -1,10 +1,11 @@
 <script>
-  import {live, exitHud, fpsBuf} from './state.svelte.js'
+  import {live, exitHud, fpsBuf, api, FPS_POINTS} from './state.svelte.js'
   import {METRICS, HUD_GROUPS} from './metricDefs.js'
   import Logo from './Logo.svelte'
   import Sparkline from './Sparkline.svelte'
 
   let hover = $state(false)
+  let shell = $state()
 
   // The FPS graphs run off the fast frame-rate event, not the sample stream —
   // copied per tick so Svelte sees a new array (the buffers are deliberately
@@ -32,16 +33,49 @@
   })
 
   const opacity = $derived(live.cfg?.hud.opacity ?? 0.85)
+
+  // Anchored to a corner means anchored: the window is put there on every
+  // resize, so a drag could only fight it. Dropping the drag region also makes
+  // it obvious the overlay is fixed rather than mysteriously snapping back.
+  const anchor = $derived(live.cfg?.hud.anchor ?? 'free')
+  const movable = $derived(anchor === 'free' || anchor === '')
+
+  // The window is fitted to the overlay, not the overlay to the window: how
+  // many rows and graphs there are depends on the user's metric selection, and
+  // the window no longer has resize handles to make up the difference. `shell`
+  // is laid out at its natural height, so measuring it cannot feed back into
+  // the resize it triggers.
+  $effect(() => {
+    if (!shell) return
+
+    let queued = 0
+    const report = () => {
+      queued = 0
+      const h = Math.ceil(shell.getBoundingClientRect().height)
+      if (h > 0) api.FitHudSize(h, window.innerHeight)
+    }
+    // Coalesced to one report per frame: a config change can move every row at
+    // once, and each intermediate height would be a window resize of its own.
+    const ro = new ResizeObserver(() => {
+      if (!queued) queued = requestAnimationFrame(report)
+    })
+    ro.observe(shell)
+    return () => {
+      cancelAnimationFrame(queued)
+      ro.disconnect()
+    }
+  })
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="drag h-full w-full"
+  bind:this={shell}
+  class="w-full {movable ? 'drag' : 'nodrag'}"
   onmouseenter={() => (hover = true)}
   onmouseleave={() => (hover = false)}
 >
   <div
-    class="relative flex h-full flex-col overflow-hidden rounded-xl border border-white/10 px-3.5 py-2.5 font-mono"
+    class="relative flex flex-col overflow-hidden rounded-xl border border-white/10 px-3.5 py-2.5 font-mono"
     style="background: rgba(8, 10, 14, {opacity})"
   >
     <!-- header -->
@@ -69,7 +103,7 @@
     {/if}
 
     {#if shown}
-      <div class="min-h-0 flex-1 space-y-2 overflow-hidden pt-1">
+      <div class="space-y-2 pt-1">
         {#each sections as g (g.id)}
           {#if g.id === 'fps'}
             <div class="border-t border-white/10 pt-1.5">
@@ -102,6 +136,7 @@
                       unit={m.graph.unit}
                       digits={m.graph.digits}
                       invert={m.graph.invert ?? false}
+                      capacity={FPS_POINTS}
                       height={38}
                     />
                   </div>
@@ -137,7 +172,9 @@
         {/each}
       </div>
     {:else}
-      <div class="flex flex-1 items-center justify-center text-[11px] text-white/40">…</div>
+      <!-- Fixed height: the window is sized from this, and a zero-height
+           placeholder would collapse the overlay before the first sample. -->
+      <div class="flex h-16 items-center justify-center text-[11px] text-white/40">…</div>
     {/if}
   </div>
 </div>

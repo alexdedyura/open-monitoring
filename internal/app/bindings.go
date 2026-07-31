@@ -30,6 +30,13 @@ func (a *App) GetConfig() config.Config {
 // SaveConfig validates and persists the settings, applying the ones that take
 // effect immediately.
 func (a *App) SaveConfig(cfg config.Config) error {
+	// The overlay's geometry is not the frontend's to send back. Its copy of the
+	// config was taken at startup, before the HUD measured itself into a height
+	// and before the user last dragged it somewhere; a settings save carrying
+	// that stale pair over would undo both. Width is the exception — that one is
+	// a setting, and the only overlay size anybody chooses by hand.
+	cfg.Hud.X, cfg.Hud.Y, cfg.Hud.H = a.cfg.Hud.X, a.cfg.Hud.Y, a.cfg.Hud.H
+
 	config.Clamp(&cfg)
 
 	rebind := cfg.Hud.HotkeyToggle != a.cfg.Hud.HotkeyToggle ||

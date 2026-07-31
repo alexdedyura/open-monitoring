@@ -96,14 +96,60 @@ home are migrated in once and the old helper cache is removed. The manifest is
   (`wmi_windows.go`); disk health is cached off the request path. Write WMI
   SELECT strings manually — `wmi.CreateQuery` derives the class from the Go
   struct name.
+- **The overlay must never take the foreground** (`applyOverlayStyles`): winc's
+  `SetAlwaysOnTop` and `SetPos` call SetWindowPos *without* SWP_NOACTIVATE, so
+  raising the HUD used to activate it — which minimised borderless-fullscreen
+  games and broke their mouse capture, both from the same cause. WS_EX_NOACTIVATE
+  is applied first thing in `enterHud`, before anything raises or moves the
+  window, and cleared in `leaveHud`. Clicks still reach the overlay (Windows
+  answers WM_MOUSEACTIVATE with MA_NOACTIVATE), so the close button and dragging
+  keep working; keyboard focus never comes here, which is the point.
+- **Never position the HUD through `runtime.WindowSetPosition`** — use
+  `moveWindowTo`. winc's `SetPos` adds the monitor's work-area origin to what it
+  is given while `WindowGetPosition` returns absolute coordinates, so the pair
+  only round-trips on a monitor whose work area starts at 0,0; a side-docked
+  taskbar or a second monitor is enough to miss the corner. Every position in
+  `internal/app` is absolute.
 - **HUD**: Wails always-on-top is one-shot; `window_windows.go` re-asserts
-  HWND_TOPMOST every 700 ms. `windows.NewCallback` is created once at package
-  scope — the runtime never frees callbacks. Exclusive fullscreen is
-  unreachable without a D3D hook (the UI warns).
+  HWND_TOPMOST every 700 ms. The same loop re-applies the corner position when
+  the overlay is anchored (`App.hudAnchorPos`), which is what survives a
+  resolution or taskbar change; free placement returns false and is left alone.
+  `windows.NewCallback` is created once at package scope — the runtime never
+  frees callbacks. Exclusive fullscreen is unreachable without a D3D hook (the
+  UI warns).
+- **HUD sizing**: the overlay is not resizable and not user-sized in height.
+  `Hud.svelte` lays its shell out at natural height, a ResizeObserver reports it
+  through `FitHudSize(contentH, viewportH)`, and `pinHudSize` sets min == max
+  track size so Windows' sizing border cannot move it (there is no run-time flag
+  that removes the border from a frameless window). Release the pin before any
+  `WindowSetSize` — a window cannot cross a constraint still in force, which is
+  why `leaveHud` unpins before restoring the dashboard. The frontend never sends
+  `hud.h`/`x`/`y` back: `SaveConfig` overwrites them from `a.cfg`, because the
+  frontend's config copy predates both the measurement and the last drag. Width
+  is the one overlay size that is a setting (`config.HudMinWidth/HudMaxWidth`).
 - **Frontend buffers**: `chartDefs.js: newBuffers()/appendSample()` is the one
   sample→series mapping; the live ring (`state.svelte.js: buf`) and recorded
   sessions share it. Buffers are deliberately non-reactive; `live.tick` is the
   redraw signal.
+- **Live charts scroll on the clock, not on the sample**: `StreamChart` pins the
+  x axis right edge to `Date.now()` from a shared rAF loop (`chartClock.js` —
+  one loop for all ten charts) and calls `setData(data, false)`, because the
+  default `true` re-ranges x to the sample extent and puts the once-a-second
+  jump straight back. `setScale('x', …)` is what re-ranges the auto y scale and
+  commits the redraw, so `setData` alone paints nothing — hence the `drawnAt = 0`
+  that hands a fresh sample to the next frame. Redraws are gated on the view
+  having moved `MIN_SHIFT_PX`, which is what keeps a 30-minute range from
+  repainting sixty times a second to move a hundredth of a pixel. Live charts
+  also pass `smooth: true` to `makeOpts` for `pxAlign: 0`; without it uPlot
+  rounds every path to whole pixels and the sub-pixel scroll advances in lurches.
+- **HUD sparkline scroll**: `Sparkline.svelte` draws the same points shifted by
+  how far along the interval to the next one we are, so a point lands on the
+  right edge as it arrives and drifts one step left. The sign matters — the
+  mirror of it (`1 - progress`) drifts the series *rightwards* and snaps it two
+  steps back on each arrival, an average speed that looks right in the maths and
+  a ten-per-second sawtooth on screen. `progress` is clamped to [0, 1] against
+  the rAF frame timestamp, and the vertical range grows instantly but shrinks
+  eased, so a peak leaving the window does not yank the curve with it.
 - **Stress test**: no cgo is available, so nothing here can link a vendor SDK.
   CPU vector throughput comes from hand-written `cpu_amd64.s` (AVX-512 and AVX2
   FMA; `cpu_other.go` keeps non-amd64 building), and the GPU is driven through

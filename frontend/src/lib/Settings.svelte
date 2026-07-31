@@ -246,6 +246,16 @@
       </div>
     </div>
 
+    <!-- Width only: the overlay measures its own rows and sizes the window to
+         them, so height is not the user's to set. -->
+    <label class="block">
+      <div class="mb-1 flex justify-between text-sm text-ink2">
+        <span>Width</span>
+        <span class="font-mono text-xs text-mut">{cfg.hud.w} px</span>
+      </div>
+      <input type="range" min="240" max="520" step="10" class="w-full accent-white" bind:value={cfg.hud.w} />
+    </label>
+
     <label class="block">
       <div class="mb-1 flex justify-between text-sm text-ink2">
         <span>Background opacity</span>
@@ -297,14 +307,16 @@
     </label>
 
     <p class="text-xs leading-relaxed text-mut">
-      The HUD is a compact always-on-top overlay: drag it anywhere, resize by the
-      edges — position and size are remembered. It stays above windowed and
+      The HUD is a compact always-on-top overlay. Its height follows the metrics
+      you enable below — the window cannot be resized by hand. On
+      <span class="text-ink2">Free</span> it is draggable and its position is
+      remembered; on a corner it stays pinned there. It stays above windowed and
       borderless-fullscreen games (exclusive fullscreen hides any overlay). The
       shortcuts work while a game has focus: click one and press the combination
       you want. Windows gives a combination to whichever application asks for it
       first, so if one is reported as held elsewhere, pick another. A
-      click-through overlay cannot be clicked, dragged or resized — use its
-      shortcut to make it interactive again.
+      click-through overlay cannot be clicked or dragged — use its shortcut to
+      make it interactive again.
     </p>
   </div>
 
