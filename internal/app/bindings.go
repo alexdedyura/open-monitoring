@@ -87,6 +87,13 @@ func (a *App) GetDiskHealth() []metrics.DiskHealthView {
 	return a.collector.DiskHealth()
 }
 
+// GetProcesses returns the current process table. Served from the cache the
+// collector's process source refreshes every two seconds: enumerating is cheap
+// but it is not free, and the table is only ever on screen on one tab.
+func (a *App) GetProcesses() metrics.ProcessSnapshot {
+	return a.collector.Processes()
+}
+
 func (a *App) ListSessions() ([]store.SessionInfo, error) {
 	if a.store == nil {
 		return nil, errNoStore

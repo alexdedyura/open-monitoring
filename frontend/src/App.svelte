@@ -5,6 +5,7 @@
   import {WindowMinimise, WindowToggleMaximise, Quit} from '../wailsjs/runtime/runtime.js'
   import Splash from './lib/Splash.svelte'
   import Dashboard from './lib/Dashboard.svelte'
+  import Processes from './lib/Processes.svelte'
   import Sessions from './lib/Sessions.svelte'
   import StressTest from './lib/StressTest.svelte'
   import Settings from './lib/Settings.svelte'
@@ -72,6 +73,7 @@
 
   const tabs = [
     {id: 'monitor', label: 'Monitor'},
+    {id: 'processes', label: 'Processes'},
     {id: 'sessions', label: 'Sessions'},
     {id: 'stress', label: 'Stress test'},
     {id: 'settings', label: 'Settings'},
@@ -171,6 +173,8 @@
     <main class="min-h-0 flex-1 overflow-y-auto">
       {#if live.view === 'monitor'}
         <Dashboard />
+      {:else if live.view === 'processes'}
+        <Processes />
       {:else if live.view === 'sessions'}
         <Sessions />
       {:else if live.view === 'stress'}

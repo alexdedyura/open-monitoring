@@ -1,52 +1,62 @@
 import {palette, diskTotals} from './metricDefs.js'
 
-// The eight dashboard charts; the same definitions render live buffers and
-// recorded sessions. `pkey` is resolved to a hex color for the active theme
-// with resolveSeries(). Within-chart series pairs are adjacent slots of the
-// validated palette (CVD-checked in both themes).
+// The ten dashboard charts; the same definitions render live buffers and
+// recorded sessions. `id` is the handle everything else holds a chart by — the
+// {#each} keys and the pair the stress tab picks out — because `title` is
+// display text, and display text is the first thing a translation rewrites;
+// identifying a chart by the words on its header would empty that tab silently.
+// `pkey` is resolved to a hex color for the active theme with resolveSeries().
+// Within-chart series pairs are adjacent slots of the validated palette
+// (CVD-checked in both themes).
 export const CHARTS = [
-  {title: 'CPU load', unit: '%', yMax: 100, series: [{key: 'cpu', label: 'CPU', pkey: 'cpu', fill: true}]},
-  {title: 'GPU load', unit: '%', yMax: 100, series: [{key: 'gpu', label: 'GPU', pkey: 'gpu', fill: true}]},
+  {id: 'cpu-load', title: 'CPU load', unit: '%', yMax: 100, series: [{key: 'cpu', label: 'CPU', pkey: 'cpu', fill: true}]},
+  {id: 'gpu-load', title: 'GPU load', unit: '%', yMax: 100, series: [{key: 'gpu', label: 'GPU', pkey: 'gpu', fill: true}]},
   {
-    title: 'Temperature', unit: '°C',
+    id: 'temperature', title: 'Temperature', unit: '°C',
     series: [
       {key: 'cpuTemp', label: 'CPU', pkey: 'cpu'},
       {key: 'gpuTemp', label: 'GPU', pkey: 'gpu'},
     ],
   },
   {
-    title: 'Power draw', unit: 'W',
+    id: 'power-draw', title: 'Power draw', unit: 'W',
     series: [
       {key: 'cpuPow', label: 'CPU', pkey: 'cpu'},
       {key: 'gpuPow', label: 'GPU', pkey: 'gpu'},
     ],
   },
-  {title: 'RAM used', unit: 'GB', yMaxKey: 'ram', series: [{key: 'ram', label: 'Used', pkey: 'ram', fill: true, digits: 1}]},
-  {title: 'VRAM used', unit: 'GB', yMaxKey: 'vram', series: [{key: 'vram', label: 'Used', pkey: 'vram', fill: true, digits: 1}]},
+  {
+    id: 'ram-used', title: 'RAM used', unit: 'GB', yMaxKey: 'ram',
+    series: [{key: 'ram', label: 'Used', pkey: 'ram', fill: true, digits: 1}],
+  },
+  {
+    id: 'vram-used', title: 'VRAM used', unit: 'GB', yMaxKey: 'vram',
+    series: [{key: 'vram', label: 'Used', pkey: 'vram', fill: true, digits: 1}],
+  },
   {
     // Windows grows the page file under memory pressure, so its size is a
     // series of its own, not a fixed axis maximum.
-    title: 'Page file (swap)', unit: 'GB',
+    id: 'page-file', title: 'Page file (swap)', unit: 'GB',
     series: [
       {key: 'swapUsed', label: 'Used', pkey: 'ram', fill: true, digits: 1},
       {key: 'swapTotal', label: 'Size', pkey: 'vram', digits: 1},
     ],
   },
   {
-    title: 'Disk I/O', unit: 'MB/s',
+    id: 'disk-io', title: 'Disk I/O', unit: 'MB/s',
     series: [
       {key: 'diskR', label: 'Read', pkey: 'diskR', digits: 1},
       {key: 'diskW', label: 'Write', pkey: 'diskW', digits: 1},
     ],
   },
   {
-    title: 'Network', unit: 'Mbps',
+    id: 'network', title: 'Network', unit: 'Mbps',
     series: [
       {key: 'netDown', label: 'Down', pkey: 'netD', digits: 1},
       {key: 'netUp', label: 'Up', pkey: 'netU', digits: 1},
     ],
   },
-  {title: 'FPS (foreground app)', unit: 'fps', series: [{key: 'fps', label: 'FPS', pkey: 'fps'}]},
+  {id: 'fps', title: 'FPS (foreground app)', unit: 'fps', series: [{key: 'fps', label: 'FPS', pkey: 'fps'}]},
 ]
 
 export function resolveSeries(series, theme) {

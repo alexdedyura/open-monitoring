@@ -12,6 +12,12 @@
 //     description, drive identity, and a driver-free CPU clock.
 //
 // Collector owns their lifecycle and merges their output on a fixed interval.
+//
+// Beside them it owns a ProcessSource (process_*.go): a table of every running
+// process, refreshed on a two-second clock of its own and served on request. It
+// never enters a Sample — a per-process table is a view of the machine right
+// now rather than a series, and enumerating it on the sampling interval would
+// put it on the goroutine that also drives alerts and recording.
 package metrics
 
 import (
@@ -49,6 +55,7 @@ type Collector struct {
 	sensors  *SensorSource
 	fps      *FPSSource
 	cpuClock *CPUClockSource
+	procs    *ProcessSource
 
 	onSample func(Sample)
 	onFPS    func(*FPSMetrics)
@@ -75,6 +82,7 @@ func NewCollector(intervalMs int, onSample func(Sample), onFPS func(*FPSMetrics)
 		sensors:   StartSensors(),
 		fps:       StartFPS(),
 		cpuClock:  StartCPUClock(),
+		procs:     StartProcesses(),
 		onSample:  onSample,
 		onFPS:     onFPS,
 		interval:  clampInterval(intervalMs),
@@ -104,6 +112,9 @@ func (c *Collector) Stop() {
 	}
 	if c.cpuClock != nil {
 		c.cpuClock.Stop()
+	}
+	if c.procs != nil {
+		c.procs.Stop()
 	}
 }
 
@@ -237,6 +248,16 @@ func (c *Collector) DiskHealth() []DiskHealthView {
 	out := make([]DiskHealthView, len(c.diskHealth))
 	copy(out, c.diskHealth)
 	return out
+}
+
+// Processes returns the most recent process table. Enumeration runs on the
+// source's own clock (see processInterval), so this is a cache read — the
+// Processes tab polls it, and polling faster only re-reads the same table.
+func (c *Collector) Processes() ProcessSnapshot {
+	if c.procs == nil {
+		return ProcessSnapshot{}
+	}
+	return c.procs.Snapshot()
 }
 
 // refreshDiskHealth re-reads drive identity and SMART counters from WMI.

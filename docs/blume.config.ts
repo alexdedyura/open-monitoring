@@ -22,7 +22,7 @@ export default defineConfig({
       "/installation",
       {
         label: "Using the app",
-        items: ["/dashboard", "/hud", "/recording", "/stress-test", "/system-panel"],
+        items: ["/dashboard", "/processes", "/hud", "/recording", "/stress-test", "/system-panel"],
       },
       {
         label: "Under the hood",

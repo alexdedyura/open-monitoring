@@ -85,6 +85,44 @@ type DiskHealthView struct {
 	PowerOnHours float64 `json:"powerOnHours"`
 }
 
+// ProcessRow is one process as shown in the process table. Everything in it
+// comes from a single NtQuerySystemInformation snapshot — no process handles
+// are opened, which is what makes three hundred rows every two seconds cheap.
+//
+// Unlike a Sample, a zero here is a real reading: an idle process genuinely
+// uses no CPU. The table still prints zero as an em dash, because two hundred
+// rows of "0.0" is noise rather than information.
+type ProcessRow struct {
+	PID  int    `json:"pid"`
+	Name string `json:"name"` // image name, e.g. "chrome.exe"
+
+	// CPU is the share of the whole machine, the way Task Manager counts it: a
+	// process saturating every logical core reads 100, not 100 × cores.
+	CPU float64 `json:"cpu"`
+
+	MemBytes  uint64 `json:"memBytes"`  // working set
+	PrivBytes uint64 `json:"privBytes"` // private commit ("private bytes")
+
+	// ReadBps/WriteBps are *all* the I/O the process did, not disk I/O: the
+	// kernel counters behind them include file-cache hits, pipes and sockets.
+	// The UI labels the column "I/O" for that reason — Task Manager's separate
+	// "Disk" column comes from ETW, which this app does not run.
+	ReadBps  float64 `json:"readBps"`
+	WriteBps float64 `json:"writeBps"`
+
+	Threads int `json:"threads"`
+}
+
+// ProcessSnapshot is one whole enumeration. It is pulled by the Processes tab
+// rather than pushed as an event: the table is on screen on one tab only, and
+// nothing else in the app has any use for it.
+type ProcessSnapshot struct {
+	At      int64        `json:"at"`      // unix ms; 0 before the first enumeration
+	Rows    []ProcessRow `json:"rows"`    // sorted by CPU, descending
+	Threads int          `json:"threads"` // total across every process
+	Error   string       `json:"error"`   // last enumeration failure, empty while it works
+}
+
 // RAMInfo describes the installed memory modules, read from SMBIOS by the
 // sensor helper. Modules counts populated slots, and the remaining fields
 // describe the first of them — mixed kits are rare enough not to model.

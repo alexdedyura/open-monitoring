@@ -1,4 +1,4 @@
-// Registry of displayable metrics: one place that knows each metric's label,
+// Registry of displayable metrics: one place that knows each metric's name,
 // entity color and how to read it out of a Sample. Used by the HUD, the HUD
 // settings editor and the stat tiles.
 
@@ -50,53 +50,46 @@ export function diskTotals(s) {
   return [dr / 2 ** 20, dw / 2 ** 20] // MiB/s
 }
 
-// label: name in the settings editor; row: name of the HUD row inside its
-// section; value(sample, info) -> display string.
+// row: the metric's name inside its section — the HUD prints it, and the
+// settings editor labels the toggle with the same string, so a row reads the
+// same in both places. value(sample, info) -> display string.
 export const METRICS = {
   gpu: {
-    label: 'GPU load',
     row: 'Load',
     color: COLORS.gpu,
     value: (s) => (s.gpu ? f0(s.gpu.usage) + ' %' : '—'),
   },
   gpuTemp: {
-    label: 'GPU temp',
     row: 'Temperature',
     color: COLORS.gpu,
     value: (s) => (s.gpu?.tempC ? f0(s.gpu.tempC) + ' °C' : '—'),
   },
   gpuHotspot: {
-    label: 'GPU hot spot',
     row: 'Hot spot',
     color: COLORS.gpu,
     value: (s) => (s.gpu?.hotspotC ? f0(s.gpu.hotspotC) + ' °C' : '—'),
   },
   gpuClock: {
-    label: 'GPU clock',
     row: 'Core clock',
     color: COLORS.gpu,
     value: (s) => (s.gpu?.coreMhz ? f0(s.gpu.coreMhz) + ' MHz' : '—'),
   },
   gpuMemClock: {
-    label: 'GPU mem clock',
     row: 'Memory clock',
     color: COLORS.gpu,
     value: (s) => (s.gpu?.memMhz ? f0(s.gpu.memMhz) + ' MHz' : '—'),
   },
   gpuPow: {
-    label: 'GPU power',
     row: 'Power',
     color: COLORS.gpu,
     value: (s) => (s.gpu?.powerW ? f1(s.gpu.powerW) + ' W' : '—'),
   },
   gpuFan: {
-    label: 'GPU fan',
     row: 'Fan',
     color: COLORS.gpu,
     value: (s) => (s.gpu?.fanPercent ? f0(s.gpu.fanPercent) + ' %' : '—'),
   },
   vram: {
-    label: 'VRAM',
     row: 'VRAM',
     color: COLORS.vram,
     value: (s) =>
@@ -105,104 +98,87 @@ export const METRICS = {
         : '—',
   },
   cpu: {
-    label: 'CPU load',
     row: 'Load',
     color: COLORS.cpu,
     value: (s) => f0(s.cpu.usage) + ' %',
   },
   cpuTemp: {
-    label: 'CPU temp',
     row: 'Temperature',
     color: COLORS.cpu,
     value: (s) => (s.cpu.tempC ? f0(s.cpu.tempC) + ' °C' : '—'),
   },
   cpuClock: {
-    label: 'CPU clock',
     row: 'Core clock',
     color: COLORS.cpu,
     value: (s) => (s.cpu.clockMhz ? f0(s.cpu.clockMhz) + ' MHz' : '—'),
   },
   cpuPow: {
-    label: 'CPU power',
     row: 'Power',
     color: COLORS.cpu,
     value: (s) => (s.cpu.powerW ? f1(s.cpu.powerW) + ' W' : '—'),
   },
   ram: {
-    label: 'RAM used',
     row: 'Used',
     color: COLORS.ram,
     value: (s) => `${f1(s.mem.used / 2 ** 30)} / ${f1(s.mem.total / 2 ** 30)} GB`,
   },
   ramLoad: {
-    label: 'RAM load',
     row: 'Load',
     color: COLORS.ram,
     value: (s) => f0(s.mem.usedPercent) + ' %',
   },
   ramSpeed: {
-    label: 'RAM speed',
     row: 'Speed',
     color: COLORS.ram,
     value: (s, info) => (info?.ram?.speedMt ? f0(info.ram.speedMt) + ' MHz' : '—'),
   },
   diskRead: {
-    label: 'Disk read',
     row: 'Read',
     color: COLORS.diskR,
     value: (s) => f1(diskTotals(s)[0]) + ' MB/s',
   },
   diskWrite: {
-    label: 'Disk write',
     row: 'Write',
     color: COLORS.diskW,
     value: (s) => f1(diskTotals(s)[1]) + ' MB/s',
   },
   netDown: {
-    label: 'Net download',
     row: 'Download',
     color: COLORS.netD,
     value: (s) => f1(s.net.downBps * 8 / 1e6) + ' Mbps',
   },
   netUp: {
-    label: 'Net upload',
     row: 'Upload',
     color: COLORS.netU,
     value: (s) => f1(s.net.upBps * 8 / 1e6) + ' Mbps',
   },
   fps: {
-    label: 'FPS',
     row: 'In-time',
     color: COLORS.fps,
     value: (s) => (s.fps ? f0(s.fps.cur) : '—'),
   },
   fpsAvg: {
-    label: 'FPS average',
     row: 'Average',
     color: COLORS.fps,
     value: (s) => (s.fps ? f0(s.fps.avg) : '—'),
   },
   fpsLow1: {
-    label: 'FPS 1% low',
     row: '1% low',
     color: COLORS.fps,
     value: (s) => (s.fps?.low1 ? f0(s.fps.low1) : '—'),
   },
   fpsLow01: {
-    label: 'FPS 0.1% low',
     row: '0.1% low',
     color: COLORS.fps,
     value: (s) => (s.fps?.low01 ? f0(s.fps.low01) : '—'),
   },
   // Rendered as sparklines rather than value rows; see Hud.svelte.
   fpsGraph: {
-    label: 'FPS graph',
     row: 'FPS graph',
     color: COLORS.fps,
     graph: {key: 'fps', unit: ' fps', digits: 0},
   },
   frameGraph: {
-    label: 'Frame time graph',
     row: 'Frame time graph',
     color: COLORS.vram,
     graph: {key: 'frameMs', unit: ' ms', digits: 1, invert: true},

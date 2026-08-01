@@ -51,7 +51,7 @@
   {:else}
     {#key theme}
       <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {#each CHARTS as c (c.title)}
+        {#each CHARTS as c (c.id)}
           <StaticChart
             title={c.title}
             unit={c.unit}

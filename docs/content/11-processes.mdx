@@ -1,0 +1,57 @@
+---
+title: Processes
+description: A live table of every process, with CPU, memory, I/O and threads.
+sidebar:
+  icon: list
+---
+
+The **Processes** tab lists everything running on the machine, refreshed every
+two seconds.
+
+## Columns
+
+| Column | What it is |
+|---|---|
+| **Process** | The executable name, with its PID beside it |
+| **CPU %** | Share of the whole machine over the last interval |
+| **Memory** | Working set — the physical memory the process currently occupies. Its private commit is in the cell's tooltip |
+| **I/O** | Bytes read and written per second |
+| **Threads** | Threads the process currently owns |
+
+Sort by any column, filter by name or PID, and switch on **Group by name** to
+collapse a browser's thirty renderer processes into a single row with a count.
+
+## Two numbers worth explaining
+
+**CPU % is the Task Manager convention.** A process saturating every logical
+core reads **100**, not 100 × the core count. (Some Unix tools, `htop` among
+them, use the other convention and would show 1600% on a 16-thread part.) The
+number you see here is directly comparable with Task Manager's *Details* tab.
+
+**I/O is not the same as disk.** These are the counters Windows keeps per
+process, and they include reads served from the file cache, plus pipes and
+sockets. A process showing steady I/O is not necessarily touching the drive.
+Separating cached from physical I/O needs an ETW trace, which is not something a
+monitoring app should keep running for the life of the session — so the column
+says I/O and means it.
+
+## Why there is no GPU column
+
+Windows does expose per-process GPU usage, through the `GPU Engine` performance
+counters that Task Manager reads. The obstacle is matching them to a graphics
+card: the counter instances identify an adapter by LUID, and the sensor engine
+this app uses for everything else about the GPU does not report one. On a laptop
+with both an integrated and a discrete GPU there is no reliable way to say which
+adapter a number belongs to, and a GPU column that silently sums two adapters is
+worse than no column. It stays on the roadmap.
+
+## Cost
+
+The whole table comes from a single `NtQuerySystemInformation` call — roughly
+2–3 ms for 250 processes, and it opens no process handles at all. It runs on its
+own two-second clock rather than the sampling interval, and the table is only
+built while you are looking at it.
+
+Processes are **not** recorded into sessions. A recording is a fixed-interval
+series of machine-wide metrics; attaching a 250-row table to every sample would
+multiply the database many times over for something with nothing to chart.

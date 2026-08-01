@@ -142,7 +142,7 @@
     <!-- charts (recreated on theme switch so uPlot picks up new colors) -->
     {#key theme}
       <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {#each CHARTS as c (c.title)}
+        {#each CHARTS as c (c.id)}
           <StreamChart
             title={c.title}
             unit={c.unit}

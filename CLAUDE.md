@@ -44,7 +44,7 @@ Every exported method on `app.App` becomes a frontend binding — Wails generate
 `frontend/wailsjs/go/app/App.js` (note `go/app/`, not `go/main/`); only
 `state.svelte.js` imports it.
 
-## Metric sources (four, no overlap)
+## Metric sources (five, no overlap)
 
 - **gopsutil v4** (`system.go`) — CPU load, RAM, disk I/O, network.
 - **lhm-bridge** (`sensors.go`) — GPU for all vendors (NVAPI/ADL/IGCL), CPU
@@ -53,6 +53,9 @@ Every exported method on `app.App` becomes a frontend binding — Wails generate
 - **PresentMon** (`fps_windows.go`) — frame times, needs elevation.
 - **WMI** (`sysinfo/smart/cpuclock_windows.go`) — drive identity + SMART, and
   the driver-free CPU boost clock (fallback when PawnIO is absent).
+- **NtQuerySystemInformation** (`process_windows.go`) — the process table. Not
+  on the sample path: its own 2 s clock, pulled by the frontend through
+  `GetProcesses` (see the gotcha below).
 
 ## Data location
 
@@ -127,6 +130,28 @@ home are migrated in once and the old helper cache is removed. The manifest is
   `hud.h`/`x`/`y` back: `SaveConfig` overwrites them from `a.cfg`, because the
   frontend's config copy predates both the measurement and the last drag. Width
   is the one overlay size that is a setting (`config.HudMinWidth/HudMaxWidth`).
+- **The process table is pulled, not pushed** (`process_windows.go`): one
+  `NtQuerySystemInformation(SystemProcessInformation)` per 2 s on its own
+  goroutine, cached, read by `Processes.svelte` through `GetProcesses`. It never
+  enters `Sample` — a 250-row table per sample would multiply `sessions.db` by
+  fifty and there is nothing to chart from it. **Do not reach for
+  `gopsutil/v4/process`**: `Processes()` opens two handles per process,
+  `NumThreads()` takes a whole system snapshot *per call* (~300 of them per
+  tick), `CPUPercent()` is a since-start lifetime average, and `Percent(0)` on
+  freshly enumerated values returns 0 forever because the baseline lives on the
+  struct you just recreated. One syscall gives name, CPU time, working set,
+  private commit, threads and I/O counters for everything at once, with no
+  handles — which also matters because opening two thousand process handles a
+  second is what heuristic AV hunts for. Key the CPU delta on **(PID,
+  CreateTime)**: Windows recycles PIDs, and the pair comes back in the same
+  struct. Size the buffer against *threads*, not processes — the kernel appends
+  a thread array after every entry and it outweighs the process structs about
+  six to one.
+- **`CHARTS` entries have an `id`** (`chartDefs.js`) and `title` is display text
+  only. They were once the same string, and `StressTest.svelte` filtered its
+  chart grid with `c.title === 'Temperature'` — so translating the titles would
+  have silently emptied that grid. Key `{#each}` and every identity test on
+  `id`.
 - **Frontend buffers**: `chartDefs.js: newBuffers()/appendSample()` is the one
   sample→series mapping; the live ring (`state.svelte.js: buf`) and recorded
   sessions share it. Buffers are deliberately non-reactive; `live.tick` is the

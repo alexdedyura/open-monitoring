@@ -48,6 +48,9 @@ whole recording, including the moment a game starts.</summary>
   fastest core, plus package temperature and power draw.
 - **Storage** — live read/write speed and free space per volume, and per drive
   the model, bus, health, SMART temperature, remaining life and power-on hours.
+- **Processes** — a live table of everything running: CPU, memory, disk and
+  network I/O and thread count per process, sortable, filterable, and groupable
+  by name so a browser's thirty processes read as one row.
 - **System panel** — a hardware summary at a glance: CPU, GPU, RAM modules,
   motherboard, OS and uptime, drives.
 - **Stress test** — burn in the CPU, memory, GPU and storage, each on its own
@@ -129,8 +132,8 @@ how the data is collected.
 
 ## Roadmap
 
-- Per-process metrics
 - Russian localisation
+- Per-process GPU usage (the process table already covers CPU, memory and I/O)
 
 ## License
 

@@ -181,7 +181,7 @@
 
   // The two charts worth having on this tab: everything else is on the
   // dashboard, and these are the ones a burn-in is actually judged by.
-  const stressCharts = $derived(CHARTS.filter((c) => c.title === 'Temperature' || c.title === 'Power draw'))
+  const stressCharts = $derived(CHARTS.filter((c) => c.id === 'temperature' || c.id === 'power-draw'))
 </script>
 
 <!-- Run bar: duration, what to run, and the countdown. -->
@@ -415,7 +415,7 @@
   <!-- what the load is doing to the machine -->
   {#key theme}
     <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      {#each stressCharts as c (c.title)}
+      {#each stressCharts as c (c.id)}
         <StreamChart title={c.title} unit={c.unit} series={resolveSeries(c.series, theme)} {theme} />
       {/each}
     </div>
