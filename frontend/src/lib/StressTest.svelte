@@ -1,8 +1,9 @@
 <script>
   import {onMount} from 'svelte'
   import {live, api, startStress, stopStress} from './state.svelte.js'
-  import {palette, cleanModel, f0, f1} from './metricDefs.js'
+  import {palette, cleanModel} from './metricDefs.js'
   import {CHARTS, resolveSeries} from './chartDefs.js'
+  import {t, fmtNum, lang} from './i18n.svelte.js'
   import StreamChart from './StreamChart.svelte'
 
   // The stress panel is the deliberate counterpart to the dashboard: the same
@@ -10,13 +11,19 @@
   // owns the run options; everything about a run in progress comes from the
   // backend through live.stress, so closing and reopening the tab — or the
   // window — never loses a running test.
+  //
+  // Every table of labels below holds KEYS, never t() results: a constant
+  // evaluated at script scope freezes in the language that was active at mount.
+  // The templates translate at the point of use. The one exception that only
+  // looks like one is a `subtitle` arrow — its body runs when the template calls
+  // it, which is inside tracked code.
 
   const DURATIONS = [
-    {sec: 60, label: '1 min'},
-    {sec: 300, label: '5 min'},
-    {sec: 600, label: '10 min'},
-    {sec: 1800, label: '30 min'},
-    {sec: 3600, label: '1 hour'},
+    {sec: 60, labelKey: 'stress.duration.1m'},
+    {sec: 300, labelKey: 'stress.duration.5m'},
+    {sec: 600, labelKey: 'stress.duration.10m'},
+    {sec: 1800, labelKey: 'stress.duration.30m'},
+    {sec: 3600, labelKey: 'stress.duration.1h'},
   ]
 
   // Per-node options, plus which of them "Run selected" covers.
@@ -48,7 +55,7 @@
   // offered because it is the one location guaranteed to be writable.
   const diskChoices = $derived([
     ...(live.info?.disks ?? []).map((d) => ({value: d, label: d})),
-    ...(tempDir ? [{value: tempDir, label: 'Temp folder'}] : []),
+    ...(tempDir ? [{value: tempDir, label: t('stress.disk.tempFolder')}] : []),
   ])
 
   const theme = $derived(live.cfg?.theme ?? 'dark')
@@ -57,45 +64,40 @@
   const running = $derived(live.stress.running)
   const seconds = $derived(custom ? Math.max(0, Math.round(customMinutes)) * 60 : opts.seconds)
 
+  // `subtitle` is a function, so the t() inside it is evaluated where the
+  // template calls it — the only reason a translated string may live in this
+  // table at all. Titles and blurbs are plain values and therefore keys.
   const NODES = [
     {
       id: 'cpu',
-      title: 'Processor',
+      titleKey: 'stress.node.cpu.title',
       pkey: 'cpu',
       subtitle: (info) => cleanModel(info?.cpuModel) || 'CPU',
-      blurb:
-        'Rotates every thread through wide FMA (AVX-512 or AVX2), AES-NI, the SHA extensions, ' +
-        'a 1024-bit modular exponentiation, a random cache walk and the transcendental library, ' +
-        'so no execution port is left idle.',
+      blurbKey: 'stress.node.cpu.blurb',
     },
     {
       id: 'ram',
-      title: 'Memory',
+      titleKey: 'stress.node.ram.title',
       pkey: 'ram',
       subtitle: (info) =>
-        info?.ram?.speedMt ? `${info.ram.type || 'RAM'} · ${f0(info.ram.speedMt)} MT/s` : 'System memory',
-      blurb:
-        'Claims the free memory, writes an address-derived checkerboard pattern, streams the whole ' +
-        'region through the controller and verifies it twice per pass. Mismatches are counted as faults.',
+        info?.ram?.speedMt
+          ? `${info.ram.type || 'RAM'} · ${fmtNum(info.ram.speedMt)} MT/s`
+          : t('stress.node.ram.subtitle'),
+      blurbKey: 'stress.node.ram.blurb',
     },
     {
       id: 'gpu',
-      title: 'Graphics',
+      titleKey: 'stress.node.gpu.title',
       pkey: 'gpu',
       subtitle: (info) => cleanModel(info?.gpuName) || 'GPU',
-      blurb:
-        'Runs an OpenCL compute kernel on the shader array, fills VRAM to the chosen share and streams ' +
-        'all of it through the memory interface — the part that an unstable memory clock trips over — ' +
-        'verifying the contents on every pass.',
+      blurbKey: 'stress.node.gpu.blurb',
     },
     {
       id: 'disk',
-      title: 'Storage',
+      titleKey: 'stress.node.disk.title',
       pkey: 'diskR',
-      subtitle: () => 'Sequential and random I/O',
-      blurb:
-        'Writes an unbuffered test file to bypass the cache, then alternates large sequential transfers ' +
-        'with 4 KB random requests at queue depth 16. The file is deleted when the run ends.',
+      subtitle: () => t('stress.node.disk.subtitle'),
+      blurbKey: 'stress.node.disk.blurb',
     },
   ]
 
@@ -163,18 +165,18 @@
   })
 
   const PEAK_ROWS = [
-    {key: 'cpuLoad', label: 'CPU load', unit: '%', pkey: 'cpu'},
-    {key: 'cpuTemp', label: 'CPU temp', unit: '°C', pkey: 'cpu'},
-    {key: 'cpuPow', label: 'CPU power', unit: 'W', pkey: 'cpu', digits: 1},
-    {key: 'cpuClock', label: 'CPU clock', unit: 'MHz', pkey: 'cpu'},
-    {key: 'gpuLoad', label: 'GPU load', unit: '%', pkey: 'gpu'},
-    {key: 'gpuTemp', label: 'GPU temp', unit: '°C', pkey: 'gpu'},
-    {key: 'gpuHotspot', label: 'GPU hot spot', unit: '°C', pkey: 'gpu'},
-    {key: 'gpuPow', label: 'GPU power', unit: 'W', pkey: 'gpu', digits: 1},
-    {key: 'gpuClock', label: 'GPU clock', unit: 'MHz', pkey: 'gpu'},
-    {key: 'gpuMemClock', label: 'GPU mem clock', unit: 'MHz', pkey: 'vram'},
-    {key: 'gpuFan', label: 'GPU fan', unit: '%', pkey: 'gpu'},
-    {key: 'ram', label: 'RAM used', unit: 'GB', pkey: 'ram', digits: 1},
+    {key: 'cpuLoad', labelKey: 'stress.peak.cpuLoad', unit: '%', pkey: 'cpu'},
+    {key: 'cpuTemp', labelKey: 'stress.peak.cpuTemp', unit: '°C', pkey: 'cpu'},
+    {key: 'cpuPow', labelKey: 'stress.peak.cpuPow', unit: 'W', pkey: 'cpu', digits: 1},
+    {key: 'cpuClock', labelKey: 'stress.peak.cpuClock', unit: 'MHz', pkey: 'cpu'},
+    {key: 'gpuLoad', labelKey: 'stress.peak.gpuLoad', unit: '%', pkey: 'gpu'},
+    {key: 'gpuTemp', labelKey: 'stress.peak.gpuTemp', unit: '°C', pkey: 'gpu'},
+    {key: 'gpuHotspot', labelKey: 'stress.peak.gpuHotspot', unit: '°C', pkey: 'gpu'},
+    {key: 'gpuPow', labelKey: 'stress.peak.gpuPow', unit: 'W', pkey: 'gpu', digits: 1},
+    {key: 'gpuClock', labelKey: 'stress.peak.gpuClock', unit: 'MHz', pkey: 'gpu'},
+    {key: 'gpuMemClock', labelKey: 'stress.peak.gpuMemClock', unit: 'MHz', pkey: 'vram'},
+    {key: 'gpuFan', labelKey: 'stress.peak.gpuFan', unit: '%', pkey: 'gpu'},
+    {key: 'ram', labelKey: 'stress.peak.ram', unit: 'GB', pkey: 'ram', digits: 1},
   ]
 
   const hasPeaks = $derived(PEAK_ROWS.some((r) => peaks[r.key]))
@@ -186,7 +188,7 @@
 
 <!-- Run bar: duration, what to run, and the countdown. -->
 <div class="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-line bg-page/90 px-4 py-2 backdrop-blur">
-  <h2 class="mr-1 font-mono text-[11px] uppercase tracking-[0.14em] text-mut">Stress test</h2>
+  <h2 class="mr-1 font-mono text-[11px] uppercase tracking-[0.14em] text-mut">{t('stress.title')}</h2>
 
   <div class="flex overflow-hidden rounded-md border border-line">
     {#each DURATIONS as d (d.sec)}
@@ -199,14 +201,14 @@
           opts.seconds = d.sec
         }}
       >
-        {d.label}
+        {t(d.labelKey)}
       </button>
     {/each}
     <button
       class="px-2.5 py-1.5 font-mono text-[11px] {custom ? 'bg-card2 text-ink' : 'text-mut hover:text-ink2'}"
       onclick={() => (custom = true)}
     >
-      Custom
+      {t('stress.duration.custom')}
     </button>
   </div>
 
@@ -219,14 +221,15 @@
         class="w-16 rounded-md border border-line bg-card px-2 py-1 text-right font-mono text-xs text-ink focus:border-ink2 focus:outline-none"
         bind:value={customMinutes}
       />
-      min {customMinutes > 0 ? '' : '— until stopped'}
+      {t('stress.duration.minutes')}
+      {customMinutes > 0 ? '' : t('stress.duration.untilStopped')}
     </label>
   {/if}
 
   <div class="grow"></div>
 
   {#if remaining}
-    <span class="font-mono text-xs text-ink2">{remaining} left</span>
+    <span class="font-mono text-xs text-ink2">{t('stress.timeLeft', {time: remaining})}</span>
   {/if}
 
   {#if running}
@@ -234,7 +237,7 @@
       class="rounded-md border border-rec/50 bg-rec/10 px-4 py-1.5 font-mono text-xs text-ink hover:bg-rec/20"
       onclick={() => stopStress()}
     >
-      Stop all
+      {t('stress.stopAll')}
     </button>
   {:else}
     <button
@@ -244,17 +247,15 @@
       onclick={runSelected}
       disabled={!anySelected}
     >
-      Run selected
+      {t('stress.runSelected')}
     </button>
   {/if}
 </div>
 
 <div class="space-y-3 p-4">
   <p class="rounded-lg border border-vram/40 bg-vram/5 px-3 py-2 text-xs leading-relaxed text-ink2">
-    <span class="font-mono text-vram">Warning</span> — a stress test drives the machine well past
-    any normal workload: expect maximum fan noise, a hot case and full power draw. Stop the run if
-    temperatures keep climbing, and be aware that the storage test writes several gigabytes per
-    round, which counts against an SSD's endurance.
+    <span class="font-mono text-vram">{t('stress.warning.label')}</span>
+    {t('stress.warning.body')}
   </p>
 
   {#if error}
@@ -272,20 +273,20 @@
       >
         <div class="flex items-center gap-2">
           <span class="h-2 w-2 shrink-0 rounded-sm" style="background:{pal[node.pkey]}"></span>
-          <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-ink">{node.title}</span>
+          <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-ink">{t(node.titleKey)}</span>
           <span class="truncate font-mono text-[10px] text-mut">{node.subtitle(live.info)}</span>
 
           <div class="grow"></div>
 
           {#if job}
             <span class="font-mono text-[10px] uppercase tracking-[0.1em] {STATE_STYLE[job.state] ?? 'text-mut'}">
-              {job.state}
+              {t(`stress.state.${job.state}`)}
             </span>
           {/if}
 
-          <label class="flex items-center gap-1.5 font-mono text-[10px] text-mut" title="Include in “Run selected”">
+          <label class="flex items-center gap-1.5 font-mono text-[10px] text-mut" title={t('stress.selectHint')}>
             <input type="checkbox" class="accent-white" bind:checked={selected[node.id]} />
-            select
+            {t('stress.select')}
           </label>
 
           {#if busy}
@@ -293,25 +294,25 @@
               class="rounded-md border border-rec/50 bg-rec/10 px-2.5 py-1 font-mono text-[11px] text-ink hover:bg-rec/20"
               onclick={() => stopStress([node.id])}
             >
-              Stop
+              {t('stress.stop')}
             </button>
           {:else}
             <button
               class="rounded-md border border-line px-2.5 py-1 font-mono text-[11px] text-ink2 hover:border-ink2 hover:text-ink"
               onclick={() => run([node.id])}
             >
-              Start
+              {t('stress.start')}
             </button>
           {/if}
         </div>
 
-        <p class="mt-2 text-xs leading-relaxed text-mut">{node.blurb}</p>
+        <p class="mt-2 text-xs leading-relaxed text-mut">{t(node.blurbKey)}</p>
 
         <!-- per-node tuning -->
         <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
           {#if node.id === 'cpu'}
             <label class="flex items-center gap-2 text-xs text-ink2">
-              Threads
+              {t('stress.cpu.threads')}
               <input
                 type="number"
                 min="1"
@@ -323,11 +324,11 @@
             </label>
             <label class="flex items-center gap-2 text-xs text-ink2">
               <input type="checkbox" class="accent-white" disabled={busy} bind:checked={opts.cpuAvx512} />
-              Use AVX-512 where present
+              {t('stress.cpu.avx512')}
             </label>
           {:else if node.id === 'ram'}
             <label class="flex items-center gap-2 text-xs text-ink2">
-              Share of free memory
+              {t('stress.ram.share')}
               <select
                 disabled={busy}
                 class="rounded-md border border-line bg-card2 px-2 py-1 font-mono text-xs text-ink focus:outline-none disabled:text-mut"
@@ -338,7 +339,7 @@
             </label>
           {:else if node.id === 'gpu'}
             <label class="flex items-center gap-2 text-xs text-ink2">
-              Share of VRAM
+              {t('stress.gpu.share')}
               <select
                 disabled={busy}
                 class="rounded-md border border-line bg-card2 px-2 py-1 font-mono text-xs text-ink focus:outline-none disabled:text-mut"
@@ -349,7 +350,7 @@
             </label>
           {:else if node.id === 'disk'}
             <label class="flex items-center gap-2 text-xs text-ink2">
-              Drive
+              {t('stress.disk.drive')}
               <select
                 disabled={busy}
                 class="rounded-md border border-line bg-card2 px-2 py-1 font-mono text-xs text-ink focus:outline-none disabled:text-mut"
@@ -359,7 +360,7 @@
               </select>
             </label>
             <label class="flex items-center gap-2 text-xs text-ink2">
-              Test file
+              {t('stress.disk.file')}
               <select
                 disabled={busy}
                 class="rounded-md border border-line bg-card2 px-2 py-1 font-mono text-xs text-ink focus:outline-none disabled:text-mut"
@@ -391,7 +392,7 @@
                   <div class="flex items-baseline justify-between gap-2">
                     <span class="truncate font-mono text-[10px] text-mut">{s.label}</span>
                     <span class="shrink-0 font-mono text-xs text-ink">
-                      {s.value >= 1000 ? f0(s.value) : f1(s.value)}
+                      {fmtNum(s.value, s.value >= 1000 ? 0 : 1)}
                       <span class="text-mut">{s.unit}</span>
                     </span>
                   </div>
@@ -401,10 +402,10 @@
 
             {#if job.faults > 0}
               <div class="font-mono text-[11px] text-rec">
-                {job.faults} data mismatches — this memory is not stable under load
+                {t('stress.faults.count', {n: job.faults})}
               </div>
             {:else if job.state === 'done' && (node.id === 'ram' || node.id === 'gpu')}
-              <div class="font-mono text-[11px] text-ram">No data mismatches</div>
+              <div class="font-mono text-[11px] text-ram">{t('stress.faults.none')}</div>
             {/if}
           </div>
         {/if}
@@ -412,25 +413,33 @@
     {/each}
   </div>
 
-  <!-- what the load is doing to the machine -->
-  {#key theme}
+  <!-- what the load is doing to the machine; re-keyed on the language too,
+       because uPlot copies the series labels into its legend at construction -->
+  {#key theme + lang.code}
     <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
       {#each stressCharts as c (c.id)}
-        <StreamChart title={c.title} unit={c.unit} series={resolveSeries(c.series, theme)} {theme} />
+        <!-- the chart header is chartDefs' string to own; translate it if that
+             table carries a key, otherwise print what it gives us -->
+        <StreamChart
+          title={c.titleKey ? t(c.titleKey) : c.title}
+          unit={c.unit}
+          series={resolveSeries(c.series, theme)}
+          {theme}
+        />
       {/each}
     </div>
   {/key}
 
   {#if hasPeaks}
     <div class="rounded-lg border border-line bg-card p-3.5">
-      <h2 class="mb-2.5 font-mono text-[11px] uppercase tracking-[0.14em] text-mut">Peaks during this run</h2>
+      <h2 class="mb-2.5 font-mono text-[11px] uppercase tracking-[0.14em] text-mut">{t('stress.peaks.title')}</h2>
       <div class="grid grid-cols-2 gap-x-5 gap-y-1.5 md:grid-cols-3 xl:grid-cols-5">
         {#each PEAK_ROWS as r (r.key)}
           {#if peaks[r.key]}
             <div class="flex items-baseline justify-between gap-2">
-              <span class="truncate font-mono text-[10px] text-mut">{r.label}</span>
+              <span class="truncate font-mono text-[10px] text-mut">{t(r.labelKey)}</span>
               <span class="shrink-0 font-mono text-xs" style="color:{pal[r.pkey]}">
-                {r.digits === 1 ? f1(peaks[r.key]) : f0(peaks[r.key])}
+                {fmtNum(peaks[r.key], r.digits ?? 0)}
                 <span class="text-mut">{r.unit}</span>
               </span>
             </div>

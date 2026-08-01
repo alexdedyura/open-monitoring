@@ -1,6 +1,7 @@
 <script>
   import {live, exitHud, fpsBuf, api, FPS_POINTS} from './state.svelte.js'
   import {METRICS, HUD_GROUPS} from './metricDefs.js'
+  import {t} from './i18n.svelte.js'
   import Logo from './Logo.svelte'
   import Sparkline from './Sparkline.svelte'
 
@@ -84,10 +85,10 @@
       <span class="text-[9px] uppercase tracking-[0.16em] text-white/50">Open Monitoring</span>
       <span class="ml-auto flex items-center gap-1.5">
         {#if live.cfg?.hud.clickThrough}
-          <span class="text-[10px] leading-none text-white/40" title="Click-through: the mouse passes into the game">⊘</span>
+          <span class="text-[10px] leading-none text-white/40" title={t('app.hud.clickThrough')}>⊘</span>
         {/if}
         {#if live.rec.active}
-          <span class="rec-dot h-1.5 w-1.5 rounded-full bg-rec" title="Recording"></span>
+          <span class="rec-dot h-1.5 w-1.5 rounded-full bg-rec" title={t('app.recording')}></span>
         {/if}
       </span>
     </div>
@@ -96,7 +97,7 @@
       <button
         class="nodrag absolute right-1.5 top-1.5 z-10 rounded px-1.5 py-0.5 text-[11px] text-white/60 hover:bg-white/10 hover:text-white"
         onclick={exitHud}
-        title="Back to dashboard"
+        title={t('app.hud.exit')}
       >
         ✕
       </button>
@@ -117,7 +118,7 @@
               {/if}
               {#each g.rows.filter((r) => r.key !== 'fps' && !r.graph) as m (m.key)}
                 <div class="flex items-baseline justify-between gap-4 leading-[17px]">
-                  <span class="text-[11px] text-white/60" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">{m.row}</span>
+                  <span class="text-[11px] text-white/60" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">{t(m.rowKey)}</span>
                   <span class="whitespace-nowrap text-[12px] font-semibold text-white" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">
                     {m.value(shown, live.info)}
                   </span>
@@ -127,7 +128,7 @@
               {#each g.rows.filter((r) => r.graph) as m (m.key)}
                 <div class="mt-1.5">
                   <div class="mb-0.5 text-[9px] uppercase tracking-[0.1em] text-white/40" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">
-                    {m.row}
+                    {t(m.rowKey)}
                   </div>
                   <div class="rounded border border-white/10 bg-black/40 px-1 pt-1">
                     <Sparkline
@@ -160,7 +161,7 @@
               {#each g.rows as m (m.key)}
                 <div class="flex items-baseline justify-between gap-4 leading-[17px]">
                   <span class="text-[11px]" style="color:{m.color}; opacity:.85; text-shadow: 0 1px 2px rgba(0,0,0,.9)">
-                    {m.row}
+                    {t(m.rowKey)}
                   </span>
                   <span class="whitespace-nowrap text-[12px] font-semibold text-white" style="text-shadow: 0 1px 2px rgba(0,0,0,.9)">
                     {m.value(shown, live.info)}

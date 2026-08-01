@@ -9,6 +9,7 @@ install alongside it.
 
 **[Download](https://github.com/alexdedyura/open-monitoring/releases/tag/latest)**
 · **[Documentation](https://alexdedyura.github.io/open-monitoring/)**
+· **[Русский](README.ru.md)**
 
 ## Screenshots
 
@@ -132,7 +133,6 @@ how the data is collected.
 
 ## Roadmap
 
-- Russian localisation
 - Per-process GPU usage (the process table already covers CPU, memory and I/O)
 
 ## License

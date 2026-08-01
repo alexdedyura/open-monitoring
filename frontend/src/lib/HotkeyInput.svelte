@@ -2,6 +2,8 @@
   // A capture field rather than a text box: the backend accepts one spelling of
   // a combination, and asking the user to learn it would be a worse deal than
   // asking them to press the keys.
+  import {t} from './i18n.svelte.js'
+
   let {value = '', live = true, onchange} = $props()
 
   let listening = $state(false)
@@ -54,9 +56,9 @@
   onkeydown={listening ? capture : null}
   onblur={() => (listening = false)}
 >
-  {listening ? 'press keys…' : value}
+  {listening ? t('app.hotkey.listening') : value}
 </button>
 
 {#if !live && !listening}
-  <div class="mt-1 font-mono text-[10px] text-rec">held by another application</div>
+  <div class="mt-1 font-mono text-[10px] text-rec">{t('app.hotkey.taken')}</div>
 {/if}

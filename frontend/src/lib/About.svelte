@@ -4,8 +4,14 @@
   import {marked} from 'marked'
   import {BrowserOpenURL} from '../../wailsjs/runtime/runtime.js'
   import {live, api} from './state.svelte.js'
+  import {t, lang} from './i18n.svelte.js'
   import Logo from './Logo.svelte'
-  import readme from '../../../README.md?raw'
+  // Both READMEs are inlined. They are a couple of kilobytes each, and a static
+  // import is what keeps this working offline — the alternative, fetching the
+  // right one at runtime, is a network call inside a desktop app that makes a
+  // point of not making any.
+  import readmeEn from '../../../README.md?raw'
+  import readmeRu from '../../../README.ru.md?raw'
   // The version comes from wails.json because that is what already stamps the
   // executable's file properties and the installer's pages — one place to bump,
   // three that agree. This tab is where a bug report starts, so the build has
@@ -58,15 +64,22 @@
   // \r?\n matters: the README is checked out with CRLF on Windows, and a
   // \n-only pattern matches nothing at all. That is how the screenshots used to
   // survive this and render as captions with no images under them.
-  const DROPPED = ['Screenshots', 'Download']
+  // Per language, because the headings are what the regex matches on.
+  const README = {
+    en: {text: readmeEn, dropped: ['Screenshots', 'Download']},
+    ru: {text: readmeRu, dropped: ['Скриншоты', 'Загрузка']},
+  }
 
-  const html = marked.parse(
-    DROPPED.reduce(
-      (text, heading) =>
-        text.replace(new RegExp(String.raw`^## ${heading}\r?\n[\s\S]*?(?=^## )`, 'm'), ''),
-      readme,
-    ),
-  )
+  const html = $derived.by(() => {
+    const {text, dropped} = README[lang.code] ?? README.en
+    return marked.parse(
+      dropped.reduce(
+        (md, heading) =>
+          md.replace(new RegExp(String.raw`^## ${heading}\r?\n[\s\S]*?(?=^## )`, 'm'), ''),
+        text,
+      ),
+    )
+  })
 
   // All links leave the WebView for the system browser — the app is not a
   // web browser and has no navigation chrome to come back with.
@@ -84,40 +97,42 @@
     <Logo size={34} />
     <div class="min-w-0 grow">
       <div class="text-sm text-ink">Open Monitoring</div>
-      <div class="font-mono text-[10px] text-mut">v{VERSION} · GPL-3.0 · open source</div>
+      <div class="font-mono text-[10px] text-mut">v{VERSION} · GPL-3.0 · {t('misc.about.openSource')}</div>
     </div>
     <button
       class="flex items-center gap-1.5 rounded-md border border-line bg-card2 px-3 py-1.5 font-mono text-xs text-ink hover:border-ink2"
       onclick={() => BrowserOpenURL(REPO_URL)}
-      title="Open the repository and star it"
+      title={t('misc.about.starHint')}
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
         <path d="m12 2 2.9 6.26 6.85.63-5.17 4.54 1.53 6.72L12 16.63l-6.11 3.52 1.53-6.72L2.25 8.9l6.85-.64Z" />
       </svg>
-      Star on GitHub
+      {t('misc.about.star')}
     </button>
   </div>
 
   <!-- updates: manual check, one-click install, restart -->
   <div class="flex items-center gap-3 rounded-lg border border-line bg-card px-4 py-3">
     <div class="min-w-0 grow">
-      <div class="text-sm text-ink">Updates</div>
+      <div class="text-sm text-ink">{t('misc.about.updates')}</div>
       <div class="font-mono text-[10px] text-mut">
         {#if phase === 'checking'}
-          checking…
+          {t('misc.about.phase.checking')}
         {:else if phase === 'uptodate'}
-          v{VERSION} is the latest version
+          {t('misc.about.phase.uptodate', {ver: VERSION})}
         {:else if phase === 'available'}
-          {live.update.latest} is available —
-          <button class="underline hover:text-ink" onclick={() => BrowserOpenURL(live.update.url)}>release notes</button>
+          {t('misc.about.phase.available', {ver: live.update.latest})}
+          <button class="underline hover:text-ink" onclick={() => BrowserOpenURL(live.update.url)}>
+            {t('misc.about.releaseNotes')}
+          </button>
         {:else if phase === 'downloading'}
-          downloading and swapping the executable…
+          {t('misc.about.phase.downloading')}
         {:else if phase === 'ready'}
-          installed — restart to finish
+          {t('misc.about.phase.ready')}
         {:else if phase === 'error'}
           {error}
         {:else}
-          checked automatically once a day
+          {t('misc.about.phase.idle')}
         {/if}
       </div>
     </div>
@@ -126,14 +141,14 @@
         class="shrink-0 rounded-md border border-line bg-card2 px-3 py-1.5 font-mono text-xs text-ink hover:border-ink2"
         onclick={download}
       >
-        Update to {live.update.latest}
+        {t('misc.about.updateTo', {ver: live.update.latest})}
       </button>
     {:else if phase === 'ready'}
       <button
         class="shrink-0 rounded-md border border-line bg-card2 px-3 py-1.5 font-mono text-xs text-ink hover:border-ink2"
         onclick={() => api.RestartApp()}
       >
-        Restart now
+        {t('misc.about.restart')}
       </button>
     {:else if phase === 'downloading'}
       <span class="shrink-0 font-mono text-xs text-mut">…</span>
@@ -143,7 +158,7 @@
         onclick={check}
         disabled={phase === 'checking'}
       >
-        Check for updates
+        {t('misc.about.check')}
       </button>
     {/if}
   </div>

@@ -27,6 +27,12 @@ type Config struct {
 	Theme            string  `json:"theme"`   // dark | light
 	UiScale          float64 `json:"uiScale"` // 0 = follow the Windows display scaling
 
+	// Lang is the interface language: "auto" follows the Windows locale, which
+	// is what a fresh install does. Only the frontend reads it — every string
+	// the backend produces travels as a key the UI translates, so there is no
+	// second copy of this decision on the Go side.
+	Lang string `json:"lang"` // auto | en | ru
+
 	// UpdateCheck enables the daily background look at GitHub releases. The
 	// manual check in About works either way.
 	UpdateCheck bool `json:"updateCheck"`
@@ -107,6 +113,7 @@ func Default() Config {
 		MaxRecordMinutes: 240,
 		Theme:            "dark",
 		UiScale:          0, // match Windows
+		Lang:             "auto",
 		UpdateCheck:      true,
 		KeepSessionsDays: 0, // keep forever
 		Alerts: AlertsConfig{
@@ -241,6 +248,13 @@ func Clamp(cfg *Config) {
 	case 0, 1, 1.25, 1.5, 2:
 	default:
 		cfg.UiScale = 0
+	}
+	// Empty is how a file written before the setting existed reads, and "auto"
+	// is what it should mean.
+	switch cfg.Lang {
+	case "en", "ru":
+	default:
+		cfg.Lang = "auto"
 	}
 	switch cfg.Hud.Anchor {
 	case "free", "tl", "tr", "bl", "br":

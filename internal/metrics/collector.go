@@ -300,6 +300,7 @@ func (c *Collector) Static() StaticInfo {
 
 	info.IsAdmin = isElevated()
 	info.OSScale = osScale()
+	info.OSLang = osLang()
 
 	info.SourceStatus = c.Status()
 	info.ApplyBridgeInfo(c.BridgeInfo())

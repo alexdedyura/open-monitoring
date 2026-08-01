@@ -1,6 +1,7 @@
 import {EventsOn} from '../../wailsjs/runtime/runtime.js'
 import * as api from '../../wailsjs/go/app/App.js'
 import {newBuffers, appendSample} from './chartDefs.js'
+import {setLang} from './i18n.svelte.js'
 
 // Client-side history window: up to 30 min of samples feed the live charts.
 const CAP_SECONDS = 1800
@@ -70,6 +71,10 @@ export async function init() {
   live.cfg = cfg
   live.info = info
   live.rec = rec
+  // Before the first render: the splash is already on screen in whatever
+  // language the catalogue defaults to, and switching under the user is worse
+  // than a beat of nothing.
+  setLang(cfg.lang, info?.osLang)
   for (const s of hist ?? []) pushSample(s)
   if (hist?.length) {
     live.sample = hist[hist.length - 1]
@@ -183,6 +188,9 @@ export async function stopStress(targets = []) {
 export async function saveConfig(cfg) {
   await api.SaveConfig(cfg)
   live.cfg = cfg
+  // The language applies on save rather than on selection, so a user who picks
+  // one and then cancels out of Settings does not get a half-applied switch.
+  setLang(cfg.lang, live.info?.osLang)
 }
 
 export async function toggleTheme() {

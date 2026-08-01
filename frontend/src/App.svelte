@@ -2,6 +2,7 @@
   import {onMount} from 'svelte'
   import {fade} from 'svelte/transition'
   import {live, init, enterHud, exitHud, toggleTheme, saveConfig} from './lib/state.svelte.js'
+  import {t} from './lib/i18n.svelte.js'
   import {WindowMinimise, WindowToggleMaximise, Quit} from '../wailsjs/runtime/runtime.js'
   import Splash from './lib/Splash.svelte'
   import Dashboard from './lib/Dashboard.svelte'
@@ -71,13 +72,16 @@
     enterHud()
   }
 
+  // Script scope, so these hold KEYS: a t() call here would run once and freeze
+  // the tab strip in whatever language was active at mount. The template
+  // translates them at the point of use.
   const tabs = [
-    {id: 'monitor', label: 'Monitor'},
-    {id: 'processes', label: 'Processes'},
-    {id: 'sessions', label: 'Sessions'},
-    {id: 'stress', label: 'Stress test'},
-    {id: 'settings', label: 'Settings'},
-    {id: 'about', label: 'About'},
+    {id: 'monitor', labelKey: 'app.tab.monitor'},
+    {id: 'processes', labelKey: 'app.tab.processes'},
+    {id: 'sessions', labelKey: 'app.tab.sessions'},
+    {id: 'stress', labelKey: 'app.tab.stress'},
+    {id: 'settings', labelKey: 'app.tab.settings'},
+    {id: 'about', labelKey: 'app.tab.about'},
   ]
 </script>
 
@@ -96,16 +100,16 @@
       </div>
 
       <nav class="nodrag ml-8 flex h-full items-stretch">
-        {#each tabs as t (t.id)}
+        {#each tabs as tab (tab.id)}
           <button
-            class="relative border-b-2 px-3 font-mono text-[11px] uppercase tracking-[0.1em] {live.view === t.id
+            class="relative border-b-2 px-3 font-mono text-[11px] uppercase tracking-[0.1em] {live.view === tab.id
               ? 'border-ink text-ink'
               : 'border-transparent text-mut hover:text-ink2'}"
-            onclick={() => (live.view = t.id)}
+            onclick={() => (live.view = tab.id)}
           >
-            {t.label}
-            {#if t.id === 'about' && live.update?.available}
-              <span class="absolute right-0.5 top-2 h-1.5 w-1.5 rounded-full bg-cpu" title="Update available"></span>
+            {t(tab.labelKey)}
+            {#if tab.id === 'about' && live.update?.available}
+              <span class="absolute right-0.5 top-2 h-1.5 w-1.5 rounded-full bg-cpu" title={t('app.update.available')}></span>
             {/if}
           </button>
         {/each}
@@ -114,18 +118,18 @@
       <div class="grow"></div>
 
       {#if live.rec.active && live.view !== 'monitor'}
-        <span class="rec-dot mr-3 h-2 w-2 rounded-full bg-rec" title="Recording"></span>
+        <span class="rec-dot mr-3 h-2 w-2 rounded-full bg-rec" title={t('app.recording')}></span>
       {/if}
 
       {#if live.stress.running && live.view !== 'stress'}
-        <span class="rec-dot mr-3 h-2 w-2 rounded-full bg-vram" title="Stress test running"></span>
+        <span class="rec-dot mr-3 h-2 w-2 rounded-full bg-vram" title={t('app.stress.running')}></span>
       {/if}
 
       <button
         class="nodrag mr-1.5 flex h-7 w-7 items-center justify-center rounded-md border border-line text-ink2 hover:bg-card2 hover:text-ink"
         onclick={toggleTheme}
-        title="Toggle light / dark theme"
-        aria-label="Toggle theme"
+        title={t('app.theme.toggle')}
+        aria-label={t('app.theme.toggleAria')}
       >
         {#if (live.cfg?.theme ?? 'dark') === 'dark'}
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -142,7 +146,7 @@
       <button
         class="nodrag mr-1 rounded-md border border-line px-2.5 py-1 font-mono text-[11px] text-ink2 hover:bg-card2 hover:text-ink"
         onclick={onHudClick}
-        title="Switch to overlay"
+        title={t('app.hud.enter')}
       >
         HUD
       </button>
@@ -150,21 +154,21 @@
       <button
         class="nodrag flex h-10 w-11 items-center justify-center text-mut hover:bg-card2 hover:text-ink"
         onclick={WindowMinimise}
-        aria-label="Minimise"
+        aria-label={t('app.window.minimise')}
       >
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" /></svg>
       </button>
       <button
         class="nodrag flex h-10 w-11 items-center justify-center text-mut hover:bg-card2 hover:text-ink"
         onclick={WindowToggleMaximise}
-        aria-label="Maximise"
+        aria-label={t('app.window.maximise')}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" /></svg>
       </button>
       <button
         class="nodrag flex h-10 w-11 items-center justify-center text-mut hover:bg-rec hover:text-white"
         onclick={Quit}
-        aria-label="Close"
+        aria-label={t('app.window.close')}
       >
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" /></svg>
       </button>
@@ -197,13 +201,19 @@
         >
           <span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-rec"></span>
           <div class="min-w-0 grow">
-            <div class="font-mono text-[10px] uppercase tracking-[0.12em] text-mut">Alert</div>
-            <div class="text-xs leading-relaxed text-ink">{a.message}</div>
+            <div class="font-mono text-[10px] uppercase tracking-[0.12em] text-mut">{t('app.alert.label')}</div>
+            <!-- The backend sends the key and the numbers; `message` is its
+                 English rendering, kept as the fallback. -->
+            <div class="text-xs leading-relaxed text-ink">
+              {a.key
+                ? t(a.key, {name: a.name, value: Math.round(a.value), limit: Math.round(a.threshold)})
+                : a.message}
+            </div>
           </div>
           <button
             class="shrink-0 text-mut hover:text-ink"
             onclick={() => live.alerts.splice(live.alerts.indexOf(a), 1)}
-            aria-label="Dismiss"
+            aria-label={t('app.alert.dismiss')}
           >
             <svg width="9" height="9" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" /></svg>
           </button>
@@ -215,30 +225,41 @@
   {#if hudAlert}
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" transition:fade={{duration: 150}}>
       <div class="w-[420px] rounded-xl border border-line bg-card p-5 shadow-2xl">
-        <h3 class="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-mut">HUD overlay</h3>
-        <p class="text-sm leading-relaxed text-ink2">
-          The overlay stays on top of windowed and
-          <span class="text-ink">borderless-fullscreen</span> apps and games.
-          <span class="text-ink">Exclusive fullscreen</span> bypasses the desktop, so the
-          HUD will not be visible there — in the game's video settings choose
-          <span class="text-ink">Windowed Fullscreen (Borderless)</span>.
+        <h3 class="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-mut">{t('app.hudAlert.title')}</h3>
+        <p class="text-sm leading-relaxed text-ink2">{t('app.hudAlert.intro')}</p>
+        <!-- Term first, explanation after. This used to be one paragraph with
+             the emphasised phrases inline, which pins English word order — a
+             translation has to be able to move them, so each one leads its own
+             line instead. -->
+        <dl class="mt-3 space-y-2 text-sm leading-relaxed text-ink2">
+          <div>
+            <dt class="text-ink">{t('app.hudAlert.borderless')}</dt>
+            <dd>{t('app.hudAlert.borderlessNote')}</dd>
+          </div>
+          <div>
+            <dt class="text-ink">{t('app.hudAlert.exclusive')}</dt>
+            <dd>{t('app.hudAlert.exclusiveNote')}</dd>
+          </div>
+        </dl>
+        <p class="mt-3 text-sm leading-relaxed text-ink2">
+          {t('app.hudAlert.advice')} <span class="text-ink">{t('app.hudAlert.videoSetting')}</span>
         </p>
         <label class="mt-4 flex items-center gap-2 text-xs text-ink2">
           <input type="checkbox" bind:checked={hudAlertMute} class="accent-white" />
-          Don't show this again
+          {t('app.hudAlert.mute')}
         </label>
         <div class="mt-4 flex justify-end gap-2">
           <button
             class="rounded-md border border-line px-3 py-1.5 font-mono text-xs text-ink2 hover:bg-card2"
             onclick={() => (hudAlert = false)}
           >
-            Cancel
+            {t('app.hudAlert.cancel')}
           </button>
           <button
             class="rounded-md border border-line bg-card2 px-3 py-1.5 font-mono text-xs text-ink hover:border-ink2"
             onclick={confirmHudAlert}
           >
-            Switch to HUD
+            {t('app.hudAlert.confirm')}
           </button>
         </div>
       </div>

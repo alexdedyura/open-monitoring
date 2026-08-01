@@ -7,6 +7,10 @@ import * as api from '../../wailsjs/go/app/App.js'
 import {CHARTS, resolveSeries, buildBuffers} from './chartDefs.js'
 import {COLORS} from './metricDefs.js'
 import {makeOpts} from './uplotOpts.js'
+// Nothing here is reactive — the image is painted once, when the user asks for
+// it — so calling t() imperatively is exactly right: it reads whatever language
+// is active at that moment and bakes it into the PNG.
+import {t, fmtNum, lang} from './i18n.svelte.js'
 
 const THEMES = {
   dark: {page: '#0e1013', card: '#15181d', line: 'rgba(255,255,255,0.07)', ink: '#eef1f4', ink2: '#9aa3ad', mut: '#5f6873'},
@@ -25,7 +29,10 @@ export async function exportSessionPNG(session, theme = 'dark') {
 }
 
 async function render(session, bufs, theme) {
-  const t = THEMES[theme] ?? THEMES.dark
+  // Named `chrome`, not `t`: `t` is the translator, and shadowing it here threw
+  // on the first chart title of every export — silently, because the caller has
+  // no catch and the button simply did nothing.
+  const chrome = THEMES[theme] ?? THEMES.dark
 
   // One full-width chart per row, stacked — a long readable timeline each.
   const CHART_W = 1360
@@ -48,10 +55,10 @@ async function render(session, bufs, theme) {
   const ctx = canvas.getContext('2d')
   ctx.scale(dpr, dpr)
 
-  ctx.fillStyle = t.page
+  ctx.fillStyle = chrome.page
   ctx.fillRect(0, 0, W, H)
 
-  drawHeader(ctx, session, t, MARGIN, W)
+  drawHeader(ctx, session, chrome, MARGIN, W)
 
   // uPlot needs a live element; parked off-screen for the duration.
   const host = document.createElement('div')
@@ -64,27 +71,29 @@ async function render(session, bufs, theme) {
       const x = MARGIN
       const y = MARGIN + HEADER + i * (tileH + GAP)
 
-      ctx.fillStyle = t.card
-      ctx.strokeStyle = t.line
+      ctx.fillStyle = chrome.card
+      ctx.strokeStyle = chrome.line
       ctx.beginPath()
       ctx.roundRect(x + 0.5, y + 0.5, tileW - 1, tileH - 1, 8)
       ctx.fill()
       ctx.stroke()
 
-      ctx.fillStyle = t.mut
+      ctx.fillStyle = chrome.mut
       ctx.font = `10px ${MONO}`
       ctx.textBaseline = 'alphabetic'
-      ctx.fillText(c.title.toUpperCase(), x + PAD, y + PAD + 9)
+      // chartDefs holds display text until it holds a catalogue key; take
+      // whichever it offers so the tile header never renders a raw key.
+      ctx.fillText((c.titleKey ? t(c.titleKey) : c.title).toUpperCase(), x + PAD, y + PAD + 9)
 
       const series = resolveSeries(c.series, theme)
 
       // series legend, right-aligned in the title row
       let lx = x + tileW - PAD
       for (let s = series.length - 1; s >= 0; s--) {
-        const label = series[s].label
+        const label = series[s].labelKey ? t(series[s].labelKey) : series[s].label
         const w = ctx.measureText(label).width
         lx -= w
-        ctx.fillStyle = t.ink2
+        ctx.fillStyle = chrome.ink2
         ctx.fillText(label, lx, y + PAD + 9)
         lx -= 12
         ctx.fillStyle = series[s].color
@@ -111,7 +120,7 @@ async function render(session, bufs, theme) {
   return canvas.toDataURL('image/png').split(',')[1]
 }
 
-function drawHeader(ctx, session, t, margin, width) {
+function drawHeader(ctx, session, chrome, margin, width) {
   // the four-dot brand mark
   const dots = [COLORS.cpu, COLORS.gpu, COLORS.ram, COLORS.vram]
   dots.forEach((c, i) => {
@@ -121,20 +130,20 @@ function drawHeader(ctx, session, t, margin, width) {
     ctx.fill()
   })
 
-  ctx.fillStyle = t.ink2
+  ctx.fillStyle = chrome.ink2
   ctx.font = `11px ${MONO}`
   ctx.fillText('OPEN MONITORING', margin + 26, 25)
 
-  ctx.fillStyle = t.ink
+  ctx.fillStyle = chrome.ink
   ctx.font = `600 15px "Segoe UI", system-ui, sans-serif`
   ctx.fillText(session.name, margin + 26, 44)
 
   const meta = [
-    new Date(session.startedAt).toLocaleString(),
-    `${session.samples} samples`,
-    `every ${session.intervalMs} ms`,
+    new Date(session.startedAt).toLocaleString(lang.code),
+    t('misc.export.samples', {n: session.samples, count: fmtNum(session.samples)}),
+    t('misc.export.interval', {n: session.intervalMs}),
   ].join('  ·  ')
-  ctx.fillStyle = t.mut
+  ctx.fillStyle = chrome.mut
   ctx.font = `11px ${MONO}`
   ctx.fillText(meta, width - margin - ctx.measureText(meta).width, 25)
 }

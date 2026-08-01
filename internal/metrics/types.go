@@ -180,6 +180,7 @@ type StaticInfo struct {
 
 	IsAdmin bool    `json:"isAdmin"`
 	OSScale float64 `json:"osScale"` // Windows display scaling, e.g. 1.25
+	OSLang  string  `json:"osLang"`  // BCP-47 user locale, e.g. "ru-RU"; "" if unknown
 
 	// Supplied by the sensor helper; see ApplyBridgeInfo.
 	GPUName string  `json:"gpuName"`

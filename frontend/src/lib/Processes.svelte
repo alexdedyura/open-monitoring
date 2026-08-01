@@ -2,6 +2,7 @@
   import {onMount} from 'svelte'
   import {live, api} from './state.svelte.js'
   import {palette} from './metricDefs.js'
+  import {t, fmtNum} from './i18n.svelte.js'
 
   // The backend rebuilds the table on a two-second clock of its own (see
   // metrics.processInterval), so this poll only ever collects a cache that is
@@ -115,23 +116,31 @@
   // it: "— MB" reads like a broken reading, "—" like nothing worth showing,
   // which is what most of this table is. CPU carries no unit and so needs no
   // pair — the column header holds the %.
-  const fmtCPU = (v) => (v > 0 ? v.toFixed(1) : '—')
-  const fmtMem = (b) => (b >= MEM_FLOOR ? [(b / 2 ** 20).toFixed(0), ' MB'] : ['—', ''])
+  //
+  // The digits go through fmtNum so the decimal mark follows the language: a
+  // table of "12.3" in a Russian UI reads as untranslated. These are called from
+  // the template, which is what keeps them reactive.
+  const fmtCPU = (v) => (v > 0 ? fmtNum(v, 1) : '—')
+  const fmtMem = (b) => (b >= MEM_FLOOR ? [fmtNum(b / 2 ** 20), ' MB'] : ['—', ''])
   const fmtIO = (bps) => {
     if (bps < IO_FLOOR) return ['—', '']
-    if (bps < 2 ** 20) return [(bps / 1024).toFixed(0), ' KB/s']
-    return [(bps / 2 ** 20).toFixed(1), ' MB/s']
+    if (bps < 2 ** 20) return [fmtNum(bps / 1024), ' KB/s']
+    return [fmtNum(bps / 2 ** 20, 1), ' MB/s']
   }
   const join = ([v, unit]) => v + unit
 
   // The caret points the way the column sorts, and only the name sorts upwards
   // — the interesting end of every other column is the top.
+  //
+  // Headers hold KEYS, not words: a t() call out here would run once and freeze
+  // in the language that was active when the tab mounted. The template
+  // translates them at the point of use.
   const COLS = [
-    {key: 'name', label: 'Process', align: 'text-left', caret: '▴'},
-    {key: 'cpu', label: 'CPU %', align: 'text-right', caret: '▾'},
-    {key: 'mem', label: 'Memory', align: 'text-right', caret: '▾'},
-    {key: 'io', label: 'I/O', align: 'text-right', caret: '▾'},
-    {key: 'threads', label: 'Threads', align: 'text-right', caret: '▾'},
+    {key: 'name', labelKey: 'misc.proc.col.name', align: 'text-left', caret: '▴'},
+    {key: 'cpu', labelKey: 'misc.proc.col.cpu', align: 'text-right', caret: '▾'},
+    {key: 'mem', labelKey: 'misc.proc.col.mem', align: 'text-right', caret: '▾'},
+    {key: 'io', labelKey: 'misc.proc.col.io', align: 'text-right', caret: '▾'},
+    {key: 'threads', labelKey: 'misc.proc.col.threads', align: 'text-right', caret: '▾'},
   ]
 
   // A grid rather than a table, since the app has no <table> anywhere. The
@@ -143,19 +152,22 @@
 
 <!-- Table bar: what the machine is running, and the two controls that shape the list. -->
 <div class="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-line bg-page/90 px-4 py-2 backdrop-blur">
-  <h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-mut">Processes</h2>
+  <h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-mut">{t('misc.proc.title')}</h2>
   <span class="font-mono text-[11px] text-mut">
-    {all.length} running · {(snap.threads ?? 0).toLocaleString()} threads
+    {t('misc.proc.running', {n: all.length})} · {t('misc.proc.threads', {
+      n: snap.threads ?? 0,
+      count: fmtNum(snap.threads ?? 0),
+    })}
   </span>
   {#if stale}
-    <span class="font-mono text-[11px] text-vram">table not refreshing</span>
+    <span class="font-mono text-[11px] text-vram">{t('misc.proc.stale')}</span>
   {/if}
 
   <div class="grow"></div>
 
   <input
     class="w-44 rounded-md border border-line bg-card px-2.5 py-1 font-mono text-xs text-ink placeholder:text-mut focus:border-ink2 focus:outline-none"
-    placeholder="Filter by name or pid"
+    placeholder={t('misc.proc.filter')}
     bind:value={query}
   />
   <button
@@ -164,7 +176,7 @@
       : 'border-line text-mut hover:text-ink2'}"
     onclick={() => (grouped = !grouped)}
   >
-    Group by name
+    {t('misc.proc.group')}
   </button>
 </div>
 
@@ -175,7 +187,7 @@
 
   {#if snap.at === 0}
     <div class="flex h-64 items-center justify-center font-mono text-sm text-mut">
-      Reading the process table…
+      {t('misc.proc.loading')}
     </div>
   {:else}
     <div class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-card">
@@ -187,7 +199,7 @@
               : 'text-mut hover:text-ink2'}"
             onclick={() => (sort = c.key)}
           >
-            {c.label}{sort === c.key ? ' ' + c.caret : ''}
+            {t(c.labelKey)}{sort === c.key ? ' ' + c.caret : ''}
           </button>
         {/each}
       </div>
@@ -199,7 +211,7 @@
           <div class="min-w-0">
             <div class="truncate text-xs text-ink">{r.name}</div>
             <div class="font-mono text-[10px] text-mut">
-              {grouped ? `${r.count} process${r.count > 1 ? 'es' : ''}` : `pid ${r.pid}`}
+              {grouped ? t('misc.proc.count', {n: r.count}) : `pid ${r.pid}`}
             </div>
           </div>
           <span
@@ -210,21 +222,24 @@
           </span>
           <span
             class="text-right font-mono text-xs {r.memBytes >= MEM_FLOOR ? 'text-ink2' : 'text-mut'}"
-            title={r.privBytes ? `${join(fmtMem(r.privBytes))} private commit` : ''}
+            title={r.privBytes ? t('misc.proc.private', {size: join(fmtMem(r.privBytes))}) : ''}
           >
             {mem[0]}<span class="text-mut">{mem[1]}</span>
           </span>
           <span
             class="text-right font-mono text-xs {io(r) >= IO_FLOOR ? 'text-ink2' : 'text-mut'}"
-            title="read {join(fmtIO(r.readBps))} · write {join(fmtIO(r.writeBps))}"
+            title={t('misc.proc.rw', {
+              read: join(fmtIO(r.readBps)),
+              write: join(fmtIO(r.writeBps)),
+            })}
           >
             {rate[0]}<span class="text-mut">{rate[1]}</span>
           </span>
-          <span class="text-right font-mono text-xs text-ink2">{r.threads}</span>
+          <span class="text-right font-mono text-xs text-ink2">{fmtNum(r.threads)}</span>
         </div>
       {:else}
         <div class="py-4 text-center font-mono text-xs text-mut">
-          {query ? `Nothing matches “${query}”` : 'Waiting for the first enumeration…'}
+          {query ? t('misc.proc.noMatch', {query}) : t('misc.proc.waiting')}
         </div>
       {/each}
 
@@ -233,16 +248,17 @@
           class="w-full px-4 py-2 text-center font-mono text-[11px] text-mut hover:text-ink2"
           onclick={() => (showAll = !showAll)}
         >
-          {showAll ? `Show top ${TOP}` : `Show all ${rows.length} rows`}
+          {showAll
+            ? t('misc.proc.showTop', {n: TOP})
+            : t('misc.proc.showAll', {n: rows.length, count: fmtNum(rows.length)})}
         </button>
       {/if}
     </div>
 
     <p class="text-xs leading-relaxed text-mut">
-      CPU is the share of the whole machine, the way Task Manager counts it — a process using
-      every core reads 100 %. <span class="text-ink2">I/O</span> is every read and write the
-      process made, including the ones the file cache served without touching a drive, so it is
-      higher than the disk activity on the Monitor tab.
+      {t('misc.proc.note.cpu')}
+      <span class="text-ink2">I/O</span>
+      {t('misc.proc.note.io')}
     </p>
   {/if}
 </div>

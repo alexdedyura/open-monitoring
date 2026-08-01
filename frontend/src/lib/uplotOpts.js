@@ -1,6 +1,8 @@
 // Shared uPlot option factory: recessive axes, mono type, crosshair with a
 // live legend as the hover layer, optional drag-to-zoom (double-click resets).
 
+import {fmtNum} from './i18n.svelte.js'
+
 const CHROME = {
   dark: {axis: '#5f6873', grid: 'rgba(255,255,255,0.05)'},
   light: {axis: '#8a94a0', grid: 'rgba(15,23,42,0.07)'},
@@ -70,6 +72,11 @@ export function makeOpts({width = 600, height = 170, series, yMax = null, unit =
         grid: {stroke: ink.grid, width: 1},
         ticks: {show: false},
         size: 46,
+        // uPlot's own tick formatter is English-only, which put a full stop in
+        // the axis of a Russian dashboard whose stat tiles a few pixels above
+        // were using a comma. Whole numbers keep no decimals — the axis is a
+        // scale, not a readout.
+        values: (u, ticks) => ticks.map((v) => fmtNum(v, Number.isInteger(v) ? 0 : 1)),
       },
     ],
     series: [
@@ -81,7 +88,7 @@ export function makeOpts({width = 600, height = 170, series, yMax = null, unit =
         fill: s.fill ? s.color + '22' : undefined,
         points: {show: false},
         spanGaps: false,
-        value: (u, v) => (v == null ? '—' : v.toFixed(s.digits ?? 0) + (unit ? ' ' + unit : '')),
+        value: (u, v) => (v == null ? '—' : fmtNum(v, s.digits ?? 0) + (unit ? ' ' + unit : '')),
       })),
     ],
   }

@@ -2,6 +2,7 @@
   // Boot splash: the logo scales in and pulses, the wordmark fades in.
   // Shown until the backend handshake finishes (plus a short minimum).
   import Logo from './Logo.svelte'
+  import {t} from './i18n.svelte.js'
 </script>
 
 <div class="splash flex h-full w-full flex-col items-center justify-center bg-page">
@@ -12,7 +13,7 @@
     Open&nbsp;Monitoring
   </div>
   <div class="word mt-2 font-mono text-[10px] tracking-[0.1em] text-mut" style="animation-delay:.5s">
-    starting sensors…
+    {t('app.splash.starting')}
   </div>
 </div>
 

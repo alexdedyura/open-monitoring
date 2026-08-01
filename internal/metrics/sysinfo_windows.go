@@ -4,6 +4,7 @@ package metrics
 
 import (
 	"strings"
+	"unsafe"
 
 	"github.com/yusufpapurcu/wmi"
 	"golang.org/x/sys/windows"
@@ -87,4 +88,25 @@ func osScale() float64 {
 		return 1
 	}
 	return float64(dpi) / 96
+}
+
+var procGetUserDefaultLocaleName = windows.NewLazySystemDLL("kernel32.dll").
+	NewProc("GetUserDefaultLocaleName")
+
+// localeNameMaxLength is LOCALE_NAME_MAX_LENGTH.
+const localeNameMaxLength = 85
+
+// osLang reports the user's locale as a BCP-47 tag ("ru-RU"), so the interface
+// can follow the language the rest of Windows is in without being asked. The
+// *locale* rather than the UI language: a Russian user running an English
+// Windows install is the common case here, and the locale is what they set to
+// say which country they are in.
+func osLang() string {
+	buf := make([]uint16, localeNameMaxLength)
+	n, _, _ := procGetUserDefaultLocaleName.Call(
+		uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	if n == 0 {
+		return ""
+	}
+	return windows.UTF16ToString(buf[:n-1]) // n counts the terminator
 }

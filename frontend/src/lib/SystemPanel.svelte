@@ -1,9 +1,21 @@
 <script>
   import {live} from './state.svelte.js'
   import {cleanModel} from './metricDefs.js'
+  import {t, fmtNum} from './i18n.svelte.js'
   import BrandIcon from './BrandIcon.svelte'
 
   let {disks = []} = $props()
+
+  // Go reports SMART health as an English word; the card compares the raw
+  // value, so only the display goes through the catalogue. Script scope, so
+  // this table holds KEYS — healthLabel() is what resolves them, and it is
+  // only ever called from inside the $derived below.
+  const HEALTH_KEYS = {
+    Healthy: 'dash.health.ok',
+    Warning: 'dash.health.warning',
+    Unhealthy: 'dash.health.bad',
+  }
+  const healthLabel = (h) => (HEALTH_KEYS[h] ? t(HEALTH_KEYS[h]) : h)
 
   function vendorOf(name) {
     const n = (name ?? '').toLowerCase()
@@ -14,7 +26,7 @@
   }
 
   const info = $derived(live.info)
-  const gb = (v) => (v / 2 ** 30).toFixed(1)
+  const gb = (v) => fmtNum(v / 2 ** 30, 1)
 
   // Uptime from the boot timestamp; live.tick keeps it advancing on screen.
   const uptime = $derived.by(() => {
@@ -24,7 +36,9 @@
     const d = Math.floor(s / 86400)
     const h = Math.floor(s / 3600) % 24
     const m = Math.floor(s / 60) % 60
-    return d ? `up ${d} d ${h} h` : `up ${h} h ${m} min`
+    // Abbreviated units on purpose: spelling out day/hour would drag four
+    // Russian plural forms into a line that has to stay short.
+    return d ? t('dash.sys.uptime.dh', {d, h}) : t('dash.sys.uptime.hm', {h, m})
   })
 
   const cards = $derived.by(() => {
@@ -32,55 +46,58 @@
     const out = [
       {
         icon: vendorOf(info.cpuModel) ?? 'cpu',
-        label: 'Processor',
+        label: t('dash.sys.cpu'),
         name: cleanModel(info.cpuModel),
         sub: [
-          `${info.cpuCores} cores · ${info.cpuThreads} threads`,
-          info.cpuBaseMhz ? `base ${(info.cpuBaseMhz / 1000).toFixed(1)} GHz` : '',
+          info.cpuCores ? t('dash.sys.cpu.cores', {n: info.cpuCores}) : '',
+          info.cpuThreads ? t('dash.sys.cpu.threads', {n: info.cpuThreads}) : '',
+          info.cpuBaseMhz ? t('dash.sys.cpu.base', {v: fmtNum(info.cpuBaseMhz / 1000, 1)}) : '',
         ].filter(Boolean).join(' · '),
       },
       {
         icon: vendorOf(info.gpuName) ?? 'gpu',
-        label: 'Graphics',
-        name: cleanModel(info.gpuName) || 'Not detected',
+        label: t('dash.sys.gpu'),
+        name: cleanModel(info.gpuName) || t('dash.sys.gpu.none'),
         sub: live.sample?.gpu?.memTotalMb
-          ? `${(live.sample.gpu.memTotalMb / 1024).toFixed(0)} GB VRAM`
+          ? t('dash.sys.gpu.vram', {n: fmtNum(live.sample.gpu.memTotalMb / 1024, 0)})
           : '',
       },
       {
         icon: 'ram',
-        label: 'Memory',
+        label: t('dash.sys.ram'),
         name: `${gb(info.ramTotal)} GB`,
+        // Type and speed form one designator (DDR5-6000): no locale digit
+        // grouping in there, or it reads as two numbers.
         sub: info.ram?.modules
           ? `${info.ram.modules} × ${info.ram.moduleGb.toFixed(0)} GB ${info.ram.type || ''}-${info.ram.speedMt} · ${info.ram.vendor}`
           : '',
       },
       {
         icon: 'board',
-        label: 'Motherboard',
-        name: info.board || 'Unknown',
+        label: t('dash.sys.board'),
+        name: info.board || t('dash.sys.unknown'),
         sub: '',
       },
       {
         icon: 'windows',
-        label: 'System',
+        label: t('dash.sys.os'),
         name: info.os,
         sub: [
           info.hostname,
           uptime,
-          info.isAdmin ? 'administrator' : 'standard privileges',
+          info.isAdmin ? t('dash.sys.admin') : t('dash.sys.standard'),
         ].filter(Boolean).join(' · '),
       },
     ]
     for (const d of disks) {
       out.push({
         icon: d.media === 'HDD' ? 'disk-hdd' : 'disk-ssd',
-        label: [d.bus, d.media].filter(Boolean).join(' ') || 'Drive',
+        label: [d.bus, d.media].filter(Boolean).join(' ') || t('dash.sys.drive'),
         name: d.model,
         sub: [
-          d.sizeGb ? `${d.sizeGb.toFixed(0)} GB` : '',
-          d.health,
-          d.tempC ? `${d.tempC.toFixed(0)}°C` : '',
+          d.sizeGb ? `${fmtNum(d.sizeGb, 0)} GB` : '',
+          healthLabel(d.health),
+          d.tempC ? `${fmtNum(d.tempC, 0)}°C` : '',
         ].filter(Boolean).join(' · '),
         health: d.health,
       })

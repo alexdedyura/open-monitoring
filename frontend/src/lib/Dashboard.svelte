@@ -1,16 +1,19 @@
 <script>
   import {live, api} from './state.svelte.js'
-  import {palette, diskTotals, f0, f1} from './metricDefs.js'
+  import {palette, diskTotals} from './metricDefs.js'
   import {CHARTS, resolveSeries} from './chartDefs.js'
+  import {t, fmtNum, lang} from './i18n.svelte.js'
   import StatTile from './StatTile.svelte'
   import StreamChart from './StreamChart.svelte'
   import StoragePanel from './StoragePanel.svelte'
 
+  // Script scope, so these hold KEYS — a t() call here would freeze in the
+  // language that was active at mount. The template translates them.
   const RANGES = [
-    {sec: 60, label: '1m'},
-    {sec: 300, label: '5m'},
-    {sec: 900, label: '15m'},
-    {sec: 1800, label: '30m'},
+    {sec: 60, labelKey: 'dash.range.1m'},
+    {sec: 300, labelKey: 'dash.range.5m'},
+    {sec: 900, labelKey: 'dash.range.15m'},
+    {sec: 1800, labelKey: 'dash.range.30m'},
   ]
 
   let recName = $state('')
@@ -60,21 +63,21 @@
         onclick={toggleRec}
       >
         <span class="rec-dot h-2 w-2 rounded-full bg-rec"></span>
-        Stop · {elapsed}
+        {t('dash.rec.stop')} · {elapsed}
       </button>
       <span class="truncate font-mono text-xs text-ink2">{live.rec.name}</span>
-      <span class="font-mono text-[10px] text-mut">auto-stop {live.rec.maxMinutes} min</span>
+      <span class="font-mono text-[10px] text-mut">{t('dash.rec.autostop', {n: live.rec.maxMinutes})}</span>
     {:else}
       <button
         class="flex items-center gap-2 rounded-md border border-line bg-card px-3 py-1.5 font-mono text-xs text-ink hover:border-rec/60 hover:bg-card2"
         onclick={toggleRec}
       >
         <span class="h-2 w-2 rounded-full bg-rec"></span>
-        Record
+        {t('dash.rec.start')}
       </button>
       <input
         class="w-56 rounded-md border border-line bg-card px-2.5 py-1.5 font-mono text-xs text-ink placeholder:text-mut focus:border-ink2 focus:outline-none"
-        placeholder="Session name (optional)"
+        placeholder={t('dash.rec.name.placeholder')}
         bind:value={recName}
         onkeydown={(e) => e.key === 'Enter' && toggleRec()}
       />
@@ -88,7 +91,7 @@
             : 'text-mut hover:text-ink2'}"
           onclick={() => (live.range = r.sec)}
         >
-          {r.label}
+          {t(r.labelKey)}
         </button>
       {/each}
     </div>
@@ -97,54 +100,62 @@
   {#if s}
     <!-- current values -->
     <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+      <!-- CPU/GPU/RAM/VRAM stay Latin in every language (see the glossary). -->
       <StatTile
         label="CPU"
         color={pal.cpu}
-        value={f0(s.cpu.usage) + '%'}
-        sub={s.cpu.tempC ? `${f0(s.cpu.tempC)}° · ${f0(s.cpu.clockMhz)} MHz` : ''}
+        value={fmtNum(s.cpu.usage, 0) + '%'}
+        sub={s.cpu.tempC ? `${fmtNum(s.cpu.tempC, 0)}° · ${fmtNum(s.cpu.clockMhz, 0)} MHz` : ''}
         bars={s.cpu.perCore}
       />
       <StatTile
         label="GPU"
         color={pal.gpu}
-        value={s.gpu ? f0(s.gpu.usage) + '%' : '—'}
-        sub={s.gpu ? `${f0(s.gpu.tempC)}° · ${f0(s.gpu.powerW)} W` : 'no data'}
+        value={s.gpu ? fmtNum(s.gpu.usage, 0) + '%' : '—'}
+        sub={s.gpu ? `${fmtNum(s.gpu.tempC, 0)}° · ${fmtNum(s.gpu.powerW, 0)} W` : t('dash.tile.nodata')}
         pct={s.gpu?.usage ?? 0}
       />
       <StatTile
         label="RAM"
         color={pal.ram}
-        value={f1(s.mem.used / 2 ** 30) + ' GB'}
-        sub={`${f0(s.mem.usedPercent)}% of ${f0(s.mem.total / 2 ** 30)} GB`}
+        value={fmtNum(s.mem.used / 2 ** 30, 1) + ' GB'}
+        sub={t('dash.tile.ram.sub', {
+          pct: fmtNum(s.mem.usedPercent, 0),
+          total: fmtNum(s.mem.total / 2 ** 30, 0),
+        })}
         pct={s.mem.usedPercent}
       />
       <StatTile
         label="VRAM"
         color={pal.vram}
-        value={s.gpu?.memUsedMb ? f1(s.gpu.memUsedMb / 1024) + ' GB' : '—'}
-        sub={s.gpu?.memTotalMb ? `of ${f1(s.gpu.memTotalMb / 1024)} GB` : ''}
+        value={s.gpu?.memUsedMb ? fmtNum(s.gpu.memUsedMb / 1024, 1) + ' GB' : '—'}
+        sub={s.gpu?.memTotalMb
+          ? t('dash.tile.vram.sub', {total: fmtNum(s.gpu.memTotalMb / 1024, 1)})
+          : ''}
         pct={s.gpu?.memTotalMb ? (s.gpu.memUsedMb / s.gpu.memTotalMb) * 100 : 0}
       />
       <StatTile
-        label="Disk"
+        label={t('dash.tile.disk')}
         color={pal.diskR}
-        value={`${f1(dsk[0])} / ${f1(dsk[1])}`}
-        sub="Read / Write · MB/s"
+        value={`${fmtNum(dsk[0], 1)} / ${fmtNum(dsk[1], 1)}`}
+        sub={t('dash.tile.disk.sub')}
       />
       <StatTile
-        label="Net"
+        label={t('dash.tile.net')}
         color={pal.netU}
-        value={`↓${f1(s.net.downBps * 8 / 1e6)} ↑${f1(s.net.upBps * 8 / 1e6)}`}
+        value={`↓${fmtNum(s.net.downBps * 8 / 1e6, 1)} ↑${fmtNum(s.net.upBps * 8 / 1e6, 1)}`}
         sub="Mbit/s"
       />
     </div>
 
-    <!-- charts (recreated on theme switch so uPlot picks up new colors) -->
-    {#key theme}
+    <!-- charts (recreated on theme switch so uPlot picks up new colors, and on
+         a language switch so it picks up the new series labels — it copies the
+         legend at construction) -->
+    {#key theme + lang.code}
       <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {#each CHARTS as c (c.id)}
           <StreamChart
-            title={c.title}
+            title={t(c.titleKey ?? c.title)}
             unit={c.unit}
             series={resolveSeries(c.series, theme)}
             yMax={c.yMaxKey ? yMaxByKey[c.yMaxKey] : (c.yMax ?? null)}
@@ -158,7 +169,7 @@
     <StoragePanel />
   {:else}
     <div class="flex h-64 items-center justify-center font-mono text-sm text-mut">
-      Collecting first samples…
+      {t('dash.collecting')}
     </div>
   {/if}
 </div>

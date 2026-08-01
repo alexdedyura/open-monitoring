@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -23,8 +24,16 @@ const (
 )
 
 // AlertEvent is one firing, shown as an in-app toast and a Windows one.
+//
+// The wording travels as a catalogue key plus its numbers, not as a sentence:
+// the in-app toast is rendered by the frontend, which is the side that knows
+// which language the user picked. Message stays as the English rendering —
+// it is the fallback if a key is ever missing, and it is what the Windows
+// toast needs, because that one is drawn by the OS and never reaches the UI.
 type AlertEvent struct {
 	ID        string  `json:"id"`
+	Key       string  `json:"key"`    // catalogue key, e.g. "alert.cpuTemp"
+	Name      string  `json:"name"`   // the volume for disk rules, else empty
 	Message   string  `json:"message"`
 	Value     float64 `json:"value"`
 	Threshold float64 `json:"threshold"`
@@ -43,25 +52,64 @@ func (a *App) checkAlerts(s metrics.Sample) {
 		return
 	}
 
-	a.eval("cpuTemp", s.CPU.TempC, cfg.CPUTempC,
-		fmt.Sprintf("CPU temperature %.0f °C — limit is %.0f °C", s.CPU.TempC, cfg.CPUTempC))
+	a.eval("cpuTemp", "alert.cpuTemp", "", s.CPU.TempC, cfg.CPUTempC)
 	if s.GPU != nil {
-		a.eval("gpuTemp", s.GPU.TempC, cfg.GPUTempC,
-			fmt.Sprintf("GPU temperature %.0f °C — limit is %.0f °C", s.GPU.TempC, cfg.GPUTempC))
+		a.eval("gpuTemp", "alert.gpuTemp", "", s.GPU.TempC, cfg.GPUTempC)
 	}
-	a.eval("ram", s.Mem.UsedPercent, cfg.RAMPercent,
-		fmt.Sprintf("RAM usage %.0f%% — limit is %.0f%%", s.Mem.UsedPercent, cfg.RAMPercent))
+	a.eval("ram", "alert.ram", "", s.Mem.UsedPercent, cfg.RAMPercent)
 
 	// Volumes alert independently: a full C: is not cured by an empty D:.
 	for _, d := range s.Disks {
-		a.eval("disk:"+d.Name, d.UsedPercent, cfg.DiskPercent,
-			fmt.Sprintf("Drive %s is %.0f%% full — limit is %.0f%%", d.Name, d.UsedPercent, cfg.DiskPercent))
+		a.eval("disk:"+d.Name, "alert.disk", d.Name, d.UsedPercent, cfg.DiskPercent)
 	}
+}
+
+// alertText renders an alert for the Windows toast. Only this one surface needs
+// a translation on the Go side — everything else in the app is worded by the
+// frontend — so it is a table rather than machinery, and it carries only the
+// four sentences that exist.
+func alertText(lang, key, name string, v, threshold float64) string {
+	if lang == "ru" {
+		switch key {
+		case "alert.cpuTemp":
+			return fmt.Sprintf("Температура CPU %.0f °C — предел %.0f °C", v, threshold)
+		case "alert.gpuTemp":
+			return fmt.Sprintf("Температура GPU %.0f °C — предел %.0f °C", v, threshold)
+		case "alert.ram":
+			return fmt.Sprintf("Загрузка RAM %.0f%% — предел %.0f%%", v, threshold)
+		case "alert.disk":
+			return fmt.Sprintf("Накопитель %s заполнен на %.0f%% — предел %.0f%%", name, v, threshold)
+		}
+	}
+	switch key {
+	case "alert.cpuTemp":
+		return fmt.Sprintf("CPU temperature %.0f °C — limit is %.0f °C", v, threshold)
+	case "alert.gpuTemp":
+		return fmt.Sprintf("GPU temperature %.0f °C — limit is %.0f °C", v, threshold)
+	case "alert.ram":
+		return fmt.Sprintf("RAM usage %.0f%% — limit is %.0f%%", v, threshold)
+	case "alert.disk":
+		return fmt.Sprintf("Drive %s is %.0f%% full — limit is %.0f%%", name, v, threshold)
+	}
+	return key
+}
+
+// toastLang resolves the configured language the same way the frontend does, so
+// a system notification cannot arrive in a different language from the window
+// that raised it.
+func (a *App) toastLang() string {
+	if a.cfg.Lang == "en" || a.cfg.Lang == "ru" {
+		return a.cfg.Lang
+	}
+	if strings.HasPrefix(strings.ToLower(a.staticInfo.OSLang), "ru") {
+		return "ru"
+	}
+	return "en"
 }
 
 // eval applies the fire/re-arm state machine for one rule. A zero threshold
 // means the rule is off; a zero value means the sensor has no reading.
-func (a *App) eval(id string, v, threshold float64, msg string) {
+func (a *App) eval(id, key, name string, v, threshold float64) {
 	if threshold <= 0 || v <= 0 {
 		return
 	}
@@ -85,10 +133,19 @@ func (a *App) eval(id string, v, threshold float64, msg string) {
 	a.alertMu.Unlock()
 
 	if fire {
-		event := AlertEvent{ID: id, Message: msg, Value: v, Threshold: threshold, At: time.Now().UnixMilli()}
+		event := AlertEvent{
+			ID:        id,
+			Key:       key,
+			Name:      name,
+			Message:   alertText("en", key, name, v, threshold),
+			Value:     v,
+			Threshold: threshold,
+			At:        time.Now().UnixMilli(),
+		}
 		runtime.EventsEmit(a.ctx, "alert", event)
 		// The system toast reaches the user when the app is behind a game or
-		// minimised — precisely when an alert matters most.
-		go pushToast("Open Monitoring", msg)
+		// minimised — precisely when an alert matters most. It is drawn by
+		// Windows, so this is the one place the wording is settled here.
+		go pushToast("Open Monitoring", alertText(a.toastLang(), key, name, v, threshold))
 	}
 }

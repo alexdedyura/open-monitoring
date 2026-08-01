@@ -152,6 +152,17 @@ home are migrated in once and the old helper cache is removed. The manifest is
   chart grid with `c.title === 'Temperature'` — so translating the titles would
   have silently emptied that grid. Key `{#each}` and every identity test on
   `id`.
+- **i18n reactivity is the whole trick** (`i18n.svelte.js`): `t()` reads a
+  module-scope `$state`, so it is reactive *only* where Svelte tracks reads — a
+  template expression, a `$derived`, or a `$effect`. A `const X = t('k')` at
+  script scope runs once and freezes in the language active at mount. Every
+  constant table of labels therefore holds **keys**, never text (`tabs`,
+  `RANGES`, `COLS`, `NODES`, `METRICS[].rowKey`, `CHARTS[].titleKey`), and the
+  template translates at the point of use. uPlot holds its series labels inside
+  the plot instance, so the chart grids key on `theme + lang.code` to force a
+  rebuild. Backend strings travel as a **key + params**, formatted by the
+  frontend; the one exception is the Windows toast (`alerts.go: alertText`),
+  which Windows draws and the UI never sees.
 - **Frontend buffers**: `chartDefs.js: newBuffers()/appendSample()` is the one
   sample→series mapping; the live ring (`state.svelte.js: buf`) and recorded
   sessions share it. Buffers are deliberately non-reactive; `live.tick` is the

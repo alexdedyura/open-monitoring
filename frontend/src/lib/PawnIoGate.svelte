@@ -5,6 +5,7 @@
   // reading arrives with the driver present.
   import {fade} from 'svelte/transition'
   import {installPawnIO, refreshInfo, api} from './state.svelte.js'
+  import {t} from './i18n.svelte.js'
   import Logo from './Logo.svelte'
 
   let busy = $state(false)
@@ -39,15 +40,17 @@
 
   <div class="text-center">
     <h1 class="font-mono text-[13px] uppercase tracking-[0.35em] text-ink">Open Monitoring</h1>
-    <p class="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-mut">driver required</p>
+    <p class="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-mut">{t('app.gate.subtitle')}</p>
   </div>
 
+  <!-- The link sits mid-sentence, so the sentence is split around it rather
+       than held in one string. Both halves are written so that "… through
+       PawnIO — …" and «… через PawnIO — …» put the driver's name in the same
+       place; a translation that needs it elsewhere has to move the button. -->
   <p class="max-w-md text-center text-sm leading-relaxed text-ink2">
-    Open Monitoring reads hardware sensors through
+    {t('app.gate.beforeLink')}
     <button class="nodrag underline hover:text-ink" onclick={() => api.OpenPawnIOSite()}>PawnIO</button>
-    — an open-source kernel driver installed once, system-wide. The app cannot
-    start without it. Installation runs through winget from the official
-    package; nothing is downloaded by the app itself.
+    {t('app.gate.afterLink')}
   </p>
 
   <div class="nodrag flex items-center gap-2">
@@ -56,14 +59,14 @@
       onclick={install}
       disabled={busy || checking}
     >
-      {busy ? 'Installing…' : 'Install PawnIO'}
+      {busy ? t('app.gate.installing') : t('app.gate.install')}
     </button>
     <button
       class="rounded-md border border-line px-4 py-2 font-mono text-xs text-ink2 hover:bg-card2 disabled:opacity-50"
       onclick={checkAgain}
       disabled={busy || checking}
     >
-      {checking ? 'Checking…' : 'Check again'}
+      {checking ? t('app.gate.checking') : t('app.gate.check')}
     </button>
   </div>
 
