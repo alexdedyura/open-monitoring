@@ -31,7 +31,7 @@ public API. Reimplementing that is not realistic, so the sensor engine is a
 small C# worker that streams one JSON reading per interval on stdout.
 
 It is published **self-contained** and compiled into the Go binary, then
-unpacked to `%LOCALAPPDATA%\OpenMonitoring\bin\` on first use under a
+unpacked to `.open-monitoring\bin\` beside the executable on first use, under a
 content-hashed name. That is what keeps the distributable a single file while
 still not requiring .NET on the machine that runs it. The same applies to
 PresentMon.

@@ -33,10 +33,17 @@ do. Switch the game to borderless fullscreen.
 
 ## Where are my settings and recordings stored?
 
-- Settings and the session database: `%APPDATA%\OpenMonitoring\`
-- Unpacked helper executables: `%LOCALAPPDATA%\OpenMonitoring\bin\`
+Everything the app writes lives in one hidden folder **next to the executable**,
+`.open-monitoring\`:
 
-Deleting these folders resets the app completely.
+- `config.json` — settings
+- `sessions.db` — recorded sessions
+- `bin\` — unpacked helper executables
+- `webview\` — the WebView2 cache
+
+Portable and installed builds both follow this rule, so the app travels with its
+data: copy the executable and that folder to a USB stick and the settings and
+recordings come along. Deleting the folder resets the app completely.
 
 ## Does it phone home?
 

@@ -21,8 +21,8 @@ the rolling
 
 Grab `open-monitoring.exe` from there — **one file, no prerequisites**. The
 native helpers (the sensor engine and PresentMon) are compiled into the
-executable and unpacked automatically on first use to
-`%LOCALAPPDATA%\OpenMonitoring\bin\`.
+executable and unpacked automatically on first use into a hidden
+`.open-monitoring\bin\` folder **next to the executable**.
 
 ## First launch
 
@@ -46,7 +46,12 @@ appear shortly after the dashboard does.
 
 ## Updating
 
-Download the new `open-monitoring.exe` from the
+The **About** tab checks GitHub for a newer release and updates the app in
+place with one click — settings and recordings are untouched. It also checks
+once a day on its own, which can be turned off in Settings.
+
+To update by hand, download the new `open-monitoring.exe` from the
 [latest release](https://github.com/alexdedyura/open-monitoring/releases/tag/latest)
-and replace the old file. Settings and recorded sessions live in
-`%APPDATA%\OpenMonitoring\` and survive updates.
+and replace the old file. Everything the app writes lives in the hidden
+`.open-monitoring\` folder beside it, so it survives the swap — and moving that
+folder together with the executable moves the whole installation.
