@@ -5,11 +5,11 @@ go 1.26.0
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3
 	github.com/creativeprojects/go-selfupdate v1.6.0
-	github.com/shirou/gopsutil/v4 v4.26.6
+	github.com/shirou/gopsutil/v4 v4.26.7
 	github.com/wailsapp/wails/v2 v2.13.0
 	github.com/yusufpapurcu/wmi v1.2.4
 	golang.org/x/sys v0.47.0
-	modernc.org/sqlite v1.54.0
+	modernc.org/sqlite v1.56.0
 )
 
 require (
@@ -62,7 +62,7 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.74.3 // indirect
+	modernc.org/libc v1.74.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
