@@ -12,8 +12,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "marked": "^18.0.7",
-    "simple-icons": "^16.27.1",
+    "marked": "^18.0.9",
+    "simple-icons": "^16.28.0",
     "uplot": "^1.6.32"
   },
   "devDependencies": {
@@ -21,6 +21,6 @@
     "@tailwindcss/vite": "^4.3.3",
     "svelte": "^5.56.8",
     "tailwindcss": "^4.3.3",
-    "vite": "^8.1.5"
+    "vite": "^8.2.1"
   }
 }
