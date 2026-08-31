@@ -287,6 +287,35 @@ Section "-install"
 
     SetOutPath $INSTDIR
 
+    # v0.6.0 and older installed machine-wide and kept mutable data beside the
+    # exe in Program Files. The per-user install uses a writable LocalAppData
+    # directory, so carry the irreplaceable files across before writing the
+    # application. Helpers and WebView2 caches are deliberately not copied.
+    #
+    # Do this before users remove the old version: its legacy uninstaller owns
+    # the entire old install directory, including that data folder.
+    ${If} $INSTDIR != "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}"
+        CreateDirectory "$INSTDIR\.open-monitoring"
+
+        IfFileExists "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}\.open-monitoring\config.json" 0 migrate_sessions_db
+        CopyFiles /SILENT "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}\.open-monitoring\config.json" "$INSTDIR\.open-monitoring"
+
+        migrate_sessions_db:
+        IfFileExists "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}\.open-monitoring\sessions.db" 0 migrate_sessions_wal
+        CopyFiles /SILENT "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}\.open-monitoring\sessions.db" "$INSTDIR\.open-monitoring"
+
+        migrate_sessions_wal:
+        IfFileExists "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}\.open-monitoring\sessions.db-wal" 0 migrate_sessions_shm
+        CopyFiles /SILENT "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}\.open-monitoring\sessions.db-wal" "$INSTDIR\.open-monitoring"
+
+        migrate_sessions_shm:
+        IfFileExists "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}\.open-monitoring\sessions.db-shm" 0 migration_done
+        CopyFiles /SILENT "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}\.open-monitoring\sessions.db-shm" "$INSTDIR\.open-monitoring"
+
+        migration_done:
+        SetFileAttributes "$INSTDIR\.open-monitoring" HIDDEN
+    ${EndIf}
+
     !insertmacro wails.files
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"

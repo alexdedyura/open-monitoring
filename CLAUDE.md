@@ -222,7 +222,9 @@ is removed.
   CI derives the Wails CLI version from `go.mod`. The installer
   (`build/windows/installer/project.nsi`) has a components page: the app
   (read-only) + the PawnIO driver via winget, checked by default; uninstall
-  leaves PawnIO in place. Dependabot bumps all four ecosystems weekly.
+  leaves PawnIO in place. It also migrates `config.json` and `sessions.db*`
+  from the old machine-wide v0.6.0 directory before that legacy install is
+  removed. Dependabot bumps all four ecosystems weekly.
 - **Updater** (`app/update.go`, go-selfupdate): tracks *versioned* releases
   only — the rolling `latest` tag is not semver and is invisible to it, so
   updates ship by cutting a `vX.Y.Z` release. The asset filter

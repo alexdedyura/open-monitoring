@@ -97,7 +97,9 @@ for testing.
   under LocalAppData, Start-menu and desktop shortcuts, an uninstaller, and the
   required PawnIO driver as a component that is selected by default. The app
   itself starts without an administrator prompt; Windows may ask once while
-  PawnIO is installed.
+  PawnIO is installed. When upgrading a machine-wide v0.6.0 installation, run
+  the new installer before removing the old version; it migrates settings and
+  recorded sessions automatically.
 - **Portable** (`open-monitoring.exe`) — a single file, no prerequisites; the
   PawnIO driver is offered on first launch.
 

@@ -49,6 +49,11 @@ The installer places the app below the current user's LocalAppData directory,
 so normal launches do not require elevation. Windows may show one UAC prompt
 while the optional PawnIO component is installed.
 
+When upgrading a machine-wide v0.6.0 installation, run the new installer
+before removing the old version. It copies `config.json`, `sessions.db` and its
+WAL files into the new per-user data directory; generated helpers and WebView2
+caches are rebuilt instead of migrated.
+
 The sensor engine takes a few seconds to start reporting, so GPU details may
 appear shortly after the dashboard does.
 
