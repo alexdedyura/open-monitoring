@@ -7,7 +7,7 @@ Afterburner / FPS Monitor. Live dashboard, recordable sessions with zoomable
 charts, and an always-on-top HUD overlay for games. One executable, nothing to
 install alongside it.
 
-**[Download](https://github.com/alexdedyura/open-monitoring/releases/tag/latest)**
+**[Download](https://github.com/alexdedyura/open-monitoring/releases/latest)**
 · **[Documentation](https://alexdedyura.github.io/open-monitoring/)**
 · **[Русский](README.ru.md)**
 
@@ -87,21 +87,27 @@ whole recording, including the moment a game starts.</summary>
 
 ## Download
 
-Every push to the default branch is built by GitHub Actions and published to
-the rolling [**latest** release](https://github.com/alexdedyura/open-monitoring/releases/tag/latest):
+Use the newest [**versioned release**](https://github.com/alexdedyura/open-monitoring/releases/latest)
+for the supported download. Every push to the default branch is also built by
+GitHub Actions and published to the rolling
+[**latest** prerelease](https://github.com/alexdedyura/open-monitoring/releases/tag/latest)
+for testing.
 
-- **Installer** (`open-monitoring-amd64-installer.exe`) — Start-menu and
-  desktop shortcuts, an uninstaller, and the required PawnIO driver as a
-  component that is selected by default.
+- **Installer** (`open-monitoring-amd64-installer.exe`) — a per-user install
+  under LocalAppData, Start-menu and desktop shortcuts, an uninstaller, and the
+  required PawnIO driver as a component that is selected by default. The app
+  itself starts without an administrator prompt; Windows may ask once while
+  PawnIO is installed.
 - **Portable** (`open-monitoring.exe`) — a single file, no prerequisites; the
   PawnIO driver is offered on first launch.
 
-The app is fully portable either way: settings and recorded sessions live in a
-hidden `.open-monitoring` folder next to the executable — nothing is written to
-the registry or AppData.
+Settings and recorded sessions live in a hidden `.open-monitoring` folder next
+to the executable. The installer only adds its shortcuts and per-user uninstall
+entry.
 
-Windows 10/11, 64-bit. The app asks for administrator rights at launch — SMART
-counters and frame capture need them, same as MSI Afterburner.
+Windows 10/11, 64-bit. Normal launches do not request administrator rights.
+Windows may restrict privileged SMART or ETW frame-capture metrics in that
+mode; the rest of the dashboard remains available.
 
 ## The PawnIO driver
 

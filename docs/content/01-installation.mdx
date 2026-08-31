@@ -15,11 +15,15 @@ sidebar:
 
 ## Download
 
-Every push to the default branch is built by GitHub Actions and published to
-the rolling
-[**latest** release](https://github.com/alexdedyura/open-monitoring/releases/tag/latest).
+Versioned releases are the supported downloads and are used by the in-app
+updater. Every push to the default branch is also built by GitHub Actions and
+published to the rolling
+[**latest** prerelease](https://github.com/alexdedyura/open-monitoring/releases/tag/latest)
+for testing.
 
-Grab `open-monitoring.exe` from there — **one file, no prerequisites**. The
+Grab the installer or `open-monitoring.exe` from the
+[newest versioned release](https://github.com/alexdedyura/open-monitoring/releases/latest).
+The portable executable is **one file with no prerequisites**. The
 native helpers (the sensor engine and PresentMon) are compiled into the
 executable and unpacked automatically on first use into a hidden
 `.open-monitoring\bin\` folder **next to the executable**.
@@ -41,6 +45,10 @@ executable and unpacked automatically on first use into a hidden
 3. Once the driver reports in, the dashboard opens by itself — no restart
    needed.
 
+The installer places the app below the current user's LocalAppData directory,
+so normal launches do not require elevation. Windows may show one UAC prompt
+while the optional PawnIO component is installed.
+
 The sensor engine takes a few seconds to start reporting, so GPU details may
 appear shortly after the dashboard does.
 
@@ -51,7 +59,7 @@ place with one click — settings and recordings are untouched. It also checks
 once a day on its own, which can be turned off in Settings.
 
 To update by hand, download the new `open-monitoring.exe` from the
-[latest release](https://github.com/alexdedyura/open-monitoring/releases/tag/latest)
+[newest versioned release](https://github.com/alexdedyura/open-monitoring/releases/latest)
 and replace the old file. Everything the app writes lives in the hidden
 `.open-monitoring\` folder beside it, so it survives the swap — and moving that
 folder together with the executable moves the whole installation.

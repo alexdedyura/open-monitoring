@@ -12,13 +12,14 @@
             <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">permonitorv2,permonitor</dpiAwareness> <!-- falls back to per-monitor if per-monitor v2 is not supported -->
         </asmv3:windowsSettings>
     </asmv3:application>
-    <!-- Elevation unlocks kernel-level sensors: CPU temperature and package
-         power (WinRing0 via lhm-bridge), drive SMART, and PresentMon's ETW
-         frame capture for FPS. -->
+    <!-- The desktop process must start as the signed-in user.  The installer
+         handles the one privileged operation (installing PawnIO); requiring
+         elevation here makes every launch depend on a UAC prompt and breaks
+         per-user WebView2/session storage. -->
     <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
         <security>
             <requestedPrivileges>
-                <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+                <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
             </requestedPrivileges>
         </security>
     </trustInfo>

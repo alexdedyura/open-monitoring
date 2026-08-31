@@ -33,10 +33,9 @@ wails dev
 ```
 
 Helpers are picked up straight from `tools/`, so there is no need to re-stage
-them. Note that the manifest requests administrator elevation, so `wails dev`
-triggers a UAC prompt on every rebuild — temporarily set
-`requestedExecutionLevel` to `asInvoker` in
-`build/windows/wails.exe.manifest` for long dev sessions.
+them. The application manifest uses `asInvoker`, so hot reload does not trigger
+a UAC prompt on every rebuild. Installing the optional PawnIO driver remains a
+separate privileged operation.
 
 ## Project layout
 
@@ -65,8 +64,10 @@ go test ./internal/...
 
 Every push to the default branch runs `build.ps1` on `windows-latest` and
 updates the rolling
-[latest release](https://github.com/alexdedyura/open-monitoring/releases/tag/latest)
-with `open-monitoring.exe`.
+[latest prerelease](https://github.com/alexdedyura/open-monitoring/releases/tag/latest).
+Tags matching `vX.Y.Z` publish a stable release after CI verifies that the tag
+matches `info.productVersion` in `wails.json`. CI installs the Wails CLI version
+declared in `go.mod`, so runtime and packager updates cannot drift apart.
 
 ## This documentation
 

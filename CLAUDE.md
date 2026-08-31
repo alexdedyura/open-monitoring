@@ -17,9 +17,9 @@ npm run build              # in frontend/ — Vite production build
 ```
 
 - `go test -race` does not work here (no gcc for cgo).
-- The manifest is `requireAdministrator`, so `wails dev` triggers a UAC prompt
-  on every rebuild — flip `requestedExecutionLevel` to `asInvoker` in
-  `build/windows/wails.exe.manifest` for long dev sessions.
+- The app manifest is `asInvoker`; only the PawnIO installation may prompt for
+  elevation. NSIS installers are per-user by default (`-installscope user`) so
+  the installed executable and its adjacent data remain writable.
 - PowerShell: do not append `2>&1` to `wails build` / native commands — PS
   wraps stderr in NativeCommandError and reports failure on exit 0.
 
@@ -62,9 +62,10 @@ Every exported method on `app.App` becomes a frontend binding — Wails generate
 Everything the app writes lives in a hidden `.open-monitoring` folder next to
 the exe (`config.Dir()`): `config.json`, `sessions.db`, unpacked helpers under
 `bin/`, and the WebView2 cache under `webview/`. Portable and installed builds
-follow the same rule; files from the pre-portable `%AppData%\OpenMonitoring`
-home are migrated in once and the old helper cache is removed. The manifest is
-`requireAdministrator`, which is what makes Program Files writable.
+follow the same rule; the per-user installer places the app below LocalAppData
+so that directory is writable without elevation. Files from the pre-portable
+`%AppData%\OpenMonitoring` home are migrated in once and the old helper cache
+is removed.
 
 ## Gotchas that will bite again
 
@@ -216,7 +217,9 @@ home are migrated in once and the old helper cache is removed. The manifest is
 - CI (`.github/workflows/release.yml`): every push to main/master runs
   `go vet`/`go test` (internal/ only — vetting main needs frontend/dist) and
   then `build.ps1 -Installer` on windows-latest, updating the rolling `latest`
-  GitHub Release with the portable exe and the NSIS installer. The installer
+  prerelease with the portable exe and the NSIS installer. A `vX.Y.Z` tag whose
+  version matches `wails.json` publishes the stable release used by the updater;
+  CI derives the Wails CLI version from `go.mod`. The installer
   (`build/windows/installer/project.nsi`) has a components page: the app
   (read-only) + the PawnIO driver via winget, checked by default; uninstall
   leaves PawnIO in place. Dependabot bumps all four ecosystems weekly.

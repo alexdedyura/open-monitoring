@@ -1,5 +1,6 @@
-# Builds the single-file Windows executable and publishes it to the rolling
-# "latest" GitHub Release on every push to the default branch.
+# Builds the single-file Windows executable. Default-branch pushes update the
+# rolling "latest" prerelease; semver tags publish the stable release consumed
+# by the in-app updater.
 #
 # The build mirrors a local `.\build.ps1` run: publish the C# sensor bridge,
 # fetch PresentMon, stage both into internal/sidecar/bin, then `wails build`.
@@ -8,13 +9,14 @@ name: release
 on:
   push:
     branches: [main, master]
+    tags: ['v*.*.*']
   workflow_dispatch:
 
 permissions:
   contents: write # create/update the release and upload the asset
 
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,8 +46,26 @@ jobs:
         shell: bash
         run: go vet ./internal/... && go test -short ./internal/...
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+      # Keep the generator/packager on exactly the same version as the runtime
+      # in go.mod. A Dependabot bump must never leave CI silently packaging a
+      # newer runtime with an older CLI.
+      - name: Install matching Wails CLI
+        shell: pwsh
+        run: |
+          $version = go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2
+          if (-not $version) { throw 'Could not resolve the Wails version from go.mod' }
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$version"
+          if ($LASTEXITCODE -ne 0) { throw "Could not install Wails CLI $version" }
+
+      - name: Verify release tag matches application version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $productVersion = (Get-Content wails.json -Raw | ConvertFrom-Json).info.productVersion
+          $tagVersion = '${{ github.ref_name }}'.TrimStart('v')
+          if ($productVersion -ne $tagVersion) {
+            throw "Tag $tagVersion does not match wails.json version $productVersion"
+          }
 
       # NSIS is preinstalled on the Windows runner images but not on PATH;
       # fall back to Chocolatey if a future image drops it.
@@ -65,18 +85,46 @@ jobs:
         shell: pwsh
         run: .\build.ps1 -Installer
 
-      - name: Publish to the rolling "latest" release
+      # A release tag is a real source pointer, not just a bucket for mutable
+      # assets. Move the rolling tag with the rolling binaries so its source
+      # archive and commit link cannot stay months behind the downloads.
+      - name: Move rolling tag to this commit
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          git tag --force latest "$GITHUB_SHA"
+          git push origin refs/tags/latest --force
+
+      - name: Publish rolling build
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: latest
           name: Latest build
+          prerelease: true
+          make_latest: false
           body: |
             Automated build of `${{ github.sha }}`.
+
+            This is a continuously updated preview. For the supported release,
+            use the newest versioned `vX.Y.Z` release.
 
             - `open-monitoring-amd64-installer.exe` — installer: Start-menu shortcut,
               uninstaller, and the required PawnIO driver (selected by default).
             - `open-monitoring.exe` — portable single file, nothing to install;
               the PawnIO driver is offered on first launch.
+          files: |
+            build/bin/open-monitoring.exe
+            build/bin/open-monitoring-amd64-installer.exe
+
+      - name: Publish versioned release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Open Monitoring ${{ github.ref_name }}
+          generate_release_notes: true
+          make_latest: true
           files: |
             build/bin/open-monitoring.exe
             build/bin/open-monitoring-amd64-installer.exe

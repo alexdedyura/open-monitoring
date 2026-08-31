@@ -22,7 +22,9 @@
 
 .PARAMETER Installer
     Also produce the NSIS installer (build/bin/open-monitoring-amd64-installer.exe).
-    Requires makensis on PATH: winget install NSIS.NSIS
+    The installer is per-user by default so the app and its portable data stay
+    writable without elevating every launch. Requires makensis on PATH:
+    winget install NSIS.NSIS
 
 .PARAMETER PresentMonVersion
     Which PresentMon release to download when one is not already staged.
@@ -120,7 +122,11 @@ function Build-App {
         if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
             throw 'The installer build needs NSIS (makensis) on PATH: winget install NSIS.NSIS'
         }
-        $wailsArgs += '-nsis'
+        # The app keeps its mutable data beside the executable. Installing to
+        # LocalAppData is therefore part of the package contract, not a caller
+        # preference: a machine-scope Program Files install is read-only when
+        # the asInvoker application starts.
+        $wailsArgs += '-nsis', '-installscope', 'user'
     }
 
     & wails @wailsArgs
