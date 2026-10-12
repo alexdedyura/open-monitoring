@@ -32,6 +32,12 @@ export const live = $state({
   range: 300, // seconds shown in live charts
   update: null, // UpdateInfo once a newer release is known
   alerts: [], // active threshold-alert toasts, newest last
+  // The last game seen in true exclusive fullscreen — {process, fsoOff, exe}
+  // — where the HUD cannot be drawn. Kept after the game stops presenting:
+  // alt-tabbing out of exclusive mode minimises the game, and the notice is
+  // only readable once the player is back on the desktop.
+  exclusive: null,
+  exclusiveDismissed: [], // process names whose notice was closed this run
 })
 
 function pushSample(s) {
@@ -89,6 +95,11 @@ export async function init() {
     live.fps = m
     pushFPS(m)
     live.fpsTick++
+    noteExclusive(m)
+    // Frame capture can come up long after the sensor poll has finished —
+    // behind a UAC prompt the user answers in their own time — so the first
+    // frames are what tells Settings it is running now.
+    if (m && !live.info?.fpsOk) refreshInfoOnce()
   })
   // The HUD hotkey is handled by the backend, because it fires while a game
   // has focus; this is how the view finds out it was pressed.
@@ -151,6 +162,68 @@ async function pollInfoUntilSensorsReady() {
 // source status the user may have just changed outside the app.
 export async function refreshInfo() {
   live.info = await api.GetStaticInfo()
+}
+
+// refreshInfoOnce is refreshInfo for a caller that fires ten times a second:
+// one request in flight at a time.
+let infoInFlight = false
+async function refreshInfoOnce() {
+  if (infoInFlight) return
+  infoInFlight = true
+  try {
+    await refreshInfo()
+  } catch {
+    // the next frame will ask again
+  } finally {
+    infoInFlight = false
+  }
+}
+
+// noteExclusive tracks the exclusive-fullscreen notice. A game that is seen
+// presenting normally again — switched to borderless — clears its own notice.
+function noteExclusive(m) {
+  if (!m?.process) return
+  if (m.exclusive) {
+    const same = live.exclusive?.process === m.process
+    // Restored, the setting only takes effect when the game restarts; until
+    // then the backend still reports it off, and offering the fix again would
+    // read as if it had not worked.
+    if (same && live.exclusive.restored) return
+    if (!same || live.exclusive.fsoOff !== (m.fsoOff || '')) {
+      live.exclusive = {process: m.process, fsoOff: m.fsoOff || '', exe: m.exe || ''}
+    }
+  } else if (live.exclusive?.process === m.process) {
+    live.exclusive = null
+  }
+}
+
+export function dismissExclusive() {
+  if (live.exclusive) live.exclusiveDismissed.push(live.exclusive.process)
+}
+
+// enableFPS raises the UAC prompt for frame capture again, then watches for
+// the outcome: the prompt is answered whenever the user gets to it.
+export async function enableFPS() {
+  await api.EnableFPSCapture()
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    try {
+      await refreshInfo()
+    } catch {
+      return
+    }
+    if (live.info?.fpsOk || live.info?.fpsCanElevate) return
+  }
+}
+
+// restoreFSO switches fullscreen optimisations back on for the game in the
+// notice ("app") or for every game ("global"). Resolves to "" or an i18n key.
+export async function restoreFSO() {
+  const ex = live.exclusive
+  if (!ex?.fsoOff) return ''
+  const err = await api.RestoreFullscreenOptimizations(ex.fsoOff, ex.exe)
+  if (!err) live.exclusive = {...ex, fsoOff: '', restored: true}
+  return err
 }
 
 // installPawnIO runs the driver install and waits for the result to become

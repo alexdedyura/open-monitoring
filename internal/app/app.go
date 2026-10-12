@@ -57,6 +57,11 @@ type App struct {
 	hotkeyMu   sync.Mutex
 	hotkeys    *hotkey.Manager
 	hotkeyErrs []error // one per binding below, nil where the shortcut is live
+
+	// Games already told they run in exclusive fullscreen, by process name, so
+	// the toast fires once per game per run. Only onFPS touches it, and that
+	// runs on the collector's one FPS goroutine.
+	exclusiveToasted map[string]bool
 }
 
 // The order the shortcuts are registered in. GetHotkeyStatus reports them by
@@ -173,4 +178,5 @@ func (a *App) onSample(s metrics.Sample) {
 // stays on the sample stream: a session is a fixed-interval series.
 func (a *App) onFPS(m *metrics.FPSMetrics) {
 	runtime.EventsEmit(a.ctx, "fps", m)
+	a.noteExclusive(m)
 }

@@ -19,6 +19,7 @@ import (
 
 	"open-monitoring/internal/app"
 	"open-monitoring/internal/config"
+	"open-monitoring/internal/metrics"
 )
 
 //go:embed all:frontend/dist
@@ -42,6 +43,12 @@ func appVersion() string {
 }
 
 func main() {
+	// The elevated copy started for PresentMon is headless: it relays frame
+	// times to the instance that asked for it and never opens a window.
+	if len(os.Args) > 1 && os.Args[1] == metrics.FPSRelayArg {
+		os.Exit(metrics.RunFPSRelay(os.Args[2:]))
+	}
+
 	// A copy relaunched by the updater starts while the old instance is still
 	// shutting down; waiting lets it release what only one instance can hold —
 	// the global hotkeys and the session database.

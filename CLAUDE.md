@@ -50,7 +50,8 @@ Every exported method on `app.App` becomes a frontend binding — Wails generate
 - **lhm-bridge** (`sensors.go`) — GPU for all vendors (NVAPI/ADL/IGCL), CPU
   package temp+power, SMBIOS board/RAM. One typed JSON line per 2 s on stdout;
   all sensor-NAME knowledge lives on the C# side.
-- **PresentMon** (`fps_windows.go`) — frame times, needs elevation.
+- **PresentMon** (`fps_windows.go`) — frame times, needs elevation (see the
+  relay gotcha below).
 - **WMI** (`sysinfo/smart/cpuclock_windows.go`) — drive identity + SMART, and
   the driver-free CPU boost clock (fallback when PawnIO is absent).
 - **NtQuerySystemInformation** (`process_windows.go`) — the process table. Not
@@ -82,6 +83,22 @@ is removed.
   walking back over frame *times* (`recentRate`/`recentPeak`), never by arrival
   timestamps; `at` is only good for deciding a process went quiet
   (`staleAfter`). Frames over `maxFrameMs` are alt-tab gaps, not frames.
+- **PresentMon elevation relay** (`fps_elevate_windows.go`): the app is
+  `asInvoker`, PresentMon is refused without admin ("access denied" on stderr,
+  exit with zero rows — a successful *start* is not success). Then the app
+  ShellExecuteEx-`runas`es its own exe as `--fps-relay <pipe> <pid>` (main.go
+  branches before Wails), serves a named pipe, and the relay runs PresentMon
+  with stdout = the pipe. The UAC handle cannot terminate the relay, so the
+  relay owns lifetime: it waits on the parent pid, kills PresentMon, runs
+  `--terminate_existing_session`; PresentMon also sits in a kill-on-close job.
+  Declined UAC is never re-prompted automatically — Settings' button
+  (`EnableFPSCapture`). `fpsError` is an i18n key (`fps.err.*`).
+- **FPS per swap chain**: frames carry `SwapChainAddress`; `mainChain` picks the
+  busiest chain over the last `staleAfter`, because interleaved chains average
+  into a wrong rate. `PresentMode` "Hardware: Legacy …" = true exclusive
+  fullscreen → `FPSMetrics.Exclusive`, plus `fso_windows.go` checks whether a
+  setting disabled fullscreen optimizations (HKCU/HKLM AppCompat Layers flag,
+  GameConfigStore tweak) and `RestoreFSO` reverts the HKCU ones.
 - **Hotkeys** (`internal/hotkey`): `RegisterHotKey` binds to the *calling
   thread*, and only that thread's queue gets WM_HOTKEY — hence the locked OS
   thread and the `GetMessage` loop. Combinations are config strings; a bare key
@@ -118,8 +135,9 @@ is removed.
   HWND_TOPMOST every 700 ms. The same loop re-applies the corner position when
   the overlay is anchored (`App.hudAnchorPos`), which is what survives a
   resolution or taskbar change; free placement returns false and is left alone.
-  `windows.NewCallback` is created once at package scope — the runtime never
-  frees callbacks. Exclusive fullscreen is unreachable without a D3D hook (the
+  A foreground WinEvent hook (`watchForeground`, own locked thread + GetMessage
+  loop) re-raises immediately when a game activates. `windows.NewCallback` is
+  created once at package scope — the runtime never frees callbacks. Exclusive fullscreen is unreachable without a D3D hook (the
   UI warns).
 - **HUD sizing**: the overlay is not resizable and not user-sized in height.
   `Hud.svelte` lays its shell out at natural height, a ResizeObserver reports it

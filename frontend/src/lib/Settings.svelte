@@ -1,5 +1,5 @@
 <script>
-  import {live, saveConfig, refreshInfo, api} from './state.svelte.js'
+  import {live, saveConfig, refreshInfo, enableFPS, api} from './state.svelte.js'
   import {METRICS, HUD_GROUPS} from './metricDefs.js'
   import {t, fmtNum} from './i18n.svelte.js'
   import SystemPanel from './SystemPanel.svelte'
@@ -13,6 +13,18 @@
   // Whether Windows actually handed us each shortcut. It describes the saved
   // combinations, so it says nothing about one still being edited.
   let hotkeys = $state({toggle: true, reset: true, clickThrough: true})
+
+  // Frame capture asks for administrator rights at launch; declined, it waits
+  // for this button rather than raising the prompt again by itself.
+  let fpsAsking = $state(false)
+  async function askFPS() {
+    fpsAsking = true
+    try {
+      await enableFPS()
+    } finally {
+      fpsAsking = false
+    }
+  }
 
   // The three tables below hold KEYS, never translated text: a t() at script
   // scope runs once and freezes in whatever language was active at mount. The
@@ -225,7 +237,17 @@
         </span>
       </div>
       {#if !live.info?.fpsOk && live.info?.fpsError}
-        <p class="text-xs leading-relaxed text-mut">{live.info.fpsError}</p>
+        <!-- The backend sends a key (fps.err.*), not text. -->
+        <p class="text-xs leading-relaxed text-mut">{t(live.info.fpsError)}</p>
+      {/if}
+      {#if !live.info?.fpsOk && live.info?.fpsCanElevate}
+        <button
+          class="rounded-md border border-line bg-card2 px-3 py-1.5 font-mono text-xs text-ink hover:border-ink2 disabled:opacity-50"
+          disabled={fpsAsking}
+          onclick={askFPS}
+        >
+          {t('settings.sources.fpsElevate')}
+        </button>
       {/if}
     </div>
   </div>

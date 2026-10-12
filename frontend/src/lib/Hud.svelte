@@ -4,6 +4,7 @@
   import {t} from './i18n.svelte.js'
   import Logo from './Logo.svelte'
   import Sparkline from './Sparkline.svelte'
+  import ExclusiveNotice from './ExclusiveNotice.svelte'
 
   let hover = $state(false)
   let shell = $state()
@@ -177,5 +178,6 @@
            placeholder would collapse the overlay before the first sample. -->
       <div class="flex h-16 items-center justify-center text-[11px] text-white/40">…</div>
     {/if}
+    <ExclusiveNotice compact />
   </div>
 </div>

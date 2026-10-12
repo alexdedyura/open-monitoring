@@ -104,33 +104,96 @@ func TestPresentationGapsAreNotFrames(t *testing.T) {
 // PresentMon versions and can reappear mid-stream.
 func TestHeaderIsResolvedByName(t *testing.T) {
 	for _, tc := range []struct {
-		name             string
-		header           string
-		wantApp, wantPID int
-		wantMs           int
+		name   string
+		header string
+		want   fpsCols
 	}{
 		{
 			"PresentMon 1.x",
 			"Application,ProcessID,SwapChainAddress,Runtime,SyncInterval,PresentFlags,Dropped,TimeInSeconds,MsBetweenPresents",
-			0, 1, 8,
+			fpsCols{app: 0, pid: 1, ms: 8, chain: 2, mode: -1},
 		},
 		{
 			"PresentMon 2.x",
 			"Application,ProcessID,SwapChainAddress,PresentRuntime,SyncInterval,PresentFlags,AllowsTearing,PresentMode,FrameType,CPUStartTime,FrameTime,CPUBusy",
-			0, 1, 10,
+			fpsCols{app: 0, pid: 1, ms: 10, chain: 2, mode: 7},
 		},
 		{
 			"display change only",
 			"Application,ProcessID,MsBetweenDisplayChange",
-			0, 1, 2,
+			fpsCols{app: 0, pid: 1, ms: 2, chain: -1, mode: -1},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			app, pid, ms := parseFPSHeader(tc.header)
-			if app != tc.wantApp || pid != tc.wantPID || ms != tc.wantMs {
-				t.Errorf("got app=%d pid=%d ms=%d, want %d/%d/%d", app, pid, ms, tc.wantApp, tc.wantPID, tc.wantMs)
+			if got := parseFPSHeader(tc.header); got != tc.want {
+				t.Errorf("got %+v, want %+v", got, tc.want)
 			}
 		})
+	}
+}
+
+// A process can present on several swap chains at once, each with its own
+// MsBetweenPresents. Mixed together, a 100 fps game and a 50 fps UI chain read
+// as about 75 fps — a number neither of them is running at.
+func TestFrameRateIsReadFromTheBusiestSwapChain(t *testing.T) {
+	f := &FPSSource{
+		frames: map[uint32][]frameTime{},
+		names:  map[uint32]string{},
+	}
+
+	var csv strings.Builder
+	csv.WriteString("Application,ProcessID,SwapChainAddress,PresentMode,MsBetweenPresents\n")
+	for i := 0; i < 300; i++ {
+		csv.WriteString("game.exe,1,0x00000000AAAA0000,Hardware: Independent Flip,10\n")
+		if i%2 == 0 {
+			csv.WriteString("game.exe,1,0x00000000BBBB0000,Composed: Flip,20\n")
+		}
+	}
+	f.consume(strings.NewReader(csv.String()))
+
+	m := f.metricsForLocked(1, time.Now())
+	if m == nil {
+		t.Fatal("no metrics")
+	}
+	if m.Cur != 100 || m.Avg != 100 {
+		t.Errorf("cur = %v, avg = %v fps, want 100 — the second chain leaked in", m.Cur, m.Avg)
+	}
+	if m.Exclusive {
+		t.Error("independent flip reported as exclusive fullscreen")
+	}
+}
+
+// True exclusive fullscreen is the one mode the HUD cannot be drawn over, and
+// PresentMon says so per frame — so the UI can tell the user instead of the
+// overlay simply not being there.
+func TestLegacyFlipIsReportedAsExclusive(t *testing.T) {
+	f := &FPSSource{
+		frames: map[uint32][]frameTime{},
+		names:  map[uint32]string{},
+		fso:    map[uint32]fsoState{1: {}}, // checked already: no registry access in a test
+	}
+
+	var csv strings.Builder
+	csv.WriteString("Application,ProcessID,SwapChainAddress,PresentMode,MsBetweenPresents\n")
+	for i := 0; i < 50; i++ {
+		csv.WriteString("game.exe,1,0x1,Hardware: Legacy Flip,16.6\n")
+	}
+	f.consume(strings.NewReader(csv.String()))
+
+	if m := f.metricsForLocked(1, time.Now()); m == nil || !m.Exclusive {
+		t.Errorf("got %+v, want exclusive fullscreen reported", m)
+	}
+}
+
+// PresentMon without rights starts, says "access denied" and exits. That must
+// be told apart from a run that worked, or there is never a reason to elevate.
+func TestConsumeCountsFrames(t *testing.T) {
+	f := &FPSSource{frames: map[uint32][]frameTime{}, names: map[uint32]string{}}
+	if n := f.consume(strings.NewReader("")); n != 0 {
+		t.Errorf("empty stream: %d frames, want 0", n)
+	}
+	if n := f.consume(strings.NewReader("Application,ProcessID,MsBetweenPresents\ngame.exe,1,10\ngame.exe,1,NA\n")); n != 1 {
+		t.Errorf("got %d frames, want the one parsable row", n)
 	}
 }
 

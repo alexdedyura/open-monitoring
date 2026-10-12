@@ -340,6 +340,7 @@ func (c *Collector) Status() SourceStatus {
 	if c.fps != nil {
 		st.FPSOK = c.fps.Running()
 		st.FPSError = c.fps.LastError()
+		st.FPSCanElevate = c.fps.CanElevate()
 	}
 
 	if c.sensors == nil {
@@ -358,6 +359,14 @@ func (c *Collector) Status() SourceStatus {
 func (c *Collector) ResetFPS() {
 	if c.fps != nil {
 		c.fps.Reset()
+	}
+}
+
+// ElevateFPS asks for administrator rights for frame capture again, after the
+// UAC prompt was declined. See FPSSource.RequestElevation.
+func (c *Collector) ElevateFPS() {
+	if c.fps != nil {
+		c.fps.RequestElevation()
 	}
 }
 

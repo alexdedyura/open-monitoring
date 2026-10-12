@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	goruntime "runtime"
 	"sync"
 	"time"
 	"unsafe"
@@ -14,10 +15,11 @@ import (
 // A frameless always-on-top window is not enough to sit above a
 // borderless-fullscreen game: when the game takes focus it re-asserts its own
 // Z-order and covers a one-shot topmost window. Lightweight overlays solve this
-// by periodically re-applying HWND_TOPMOST (heavier ones inject a D3D hook).
-// We take the periodic approach — reliable for borderless windowed; exclusive
-// fullscreen bypasses the desktop entirely and is out of reach either way (the
-// UI warns about that before switching to the HUD).
+// by re-applying HWND_TOPMOST (heavier ones inject a D3D hook). We re-apply it
+// on a timer and the moment another window takes the foreground — reliable for
+// windowed, borderless and FSO "fullscreen"; true exclusive fullscreen bypasses
+// the desktop entirely and is out of reach either way. PresentMon reports when
+// a game is in that mode, and the UI says so (see app/fullscreen.go).
 
 var (
 	modUser32                      = windows.NewLazySystemDLL("user32.dll")
@@ -279,10 +281,12 @@ func (t *topmostKeeper) start(pin func() (int, int, bool)) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.cancel = cancel
+	go watchForeground(ctx)
 	go func() {
 		hwnd := findMainWindow()
 		tk := time.NewTicker(700 * time.Millisecond)
 		defer tk.Stop()
+		var again <-chan time.Time
 		for {
 			if hwnd == 0 {
 				hwnd = findMainWindow()
@@ -303,9 +307,82 @@ func (t *topmostKeeper) start(pin func() (int, int, bool)) {
 			case <-ctx.Done():
 				return
 			case <-tk.C:
+			case <-foregroundChanged:
+				// A game taking the foreground is the moment it covers the
+				// overlay — a fullscreen swap chain makes its window topmost
+				// as it activates. Raise straight away, then once more after
+				// the game has finished settling, instead of leaving the HUD
+				// buried for up to a tick each time.
+				again = time.After(300 * time.Millisecond)
+			case <-again:
+				again = nil
 			}
 		}
 	}()
+}
+
+const (
+	eventSystemForeground  = 0x0003
+	winEventOutOfContext   = 0x0000
+	winEventSkipOwnProcess = 0x0002
+	wmQuit                 = 0x0012
+	wmUser                 = 0x0400
+	pmNoRemove             = 0x0000
+)
+
+var (
+	procSetWinEventHook    = modUser32.NewProc("SetWinEventHook")
+	procUnhookWinEvent     = modUser32.NewProc("UnhookWinEvent")
+	procGetMessageW        = modUser32.NewProc("GetMessageW")
+	procPeekMessageW       = modUser32.NewProc("PeekMessageW")
+	procPostThreadMessageW = modUser32.NewProc("PostThreadMessageW")
+)
+
+// foregroundChanged is signalled whenever another application's window takes
+// the foreground. Like enumCallback, the hook callback is created once, at
+// package scope, because the runtime never frees callbacks.
+var (
+	foregroundChanged = make(chan struct{}, 1)
+	winEventCallback  = windows.NewCallback(func(hook, event, hwnd, idObject, idChild, thread, at uintptr) uintptr {
+		select {
+		case foregroundChanged <- struct{}{}:
+		default: // one pending signal says everything a second one would
+		}
+		return 0
+	})
+)
+
+// watchForeground runs a WinEvent hook for foreground changes until ctx ends.
+// An out-of-context hook is delivered to the thread that installed it, inside
+// its message loop — hence the locked OS thread and the GetMessage loop, the
+// same arrangement as the hotkey listener.
+func watchForeground(ctx context.Context) {
+	goruntime.LockOSThread()
+	defer goruntime.UnlockOSThread()
+
+	// Make sure this thread has a message queue before anyone can post WM_QUIT
+	// to it; a post to a thread without one is silently lost.
+	var msg [48]byte // MSG
+	procPeekMessageW.Call(uintptr(unsafe.Pointer(&msg[0])), 0, wmUser, wmUser, pmNoRemove)
+
+	hook, _, _ := procSetWinEventHook.Call(eventSystemForeground, eventSystemForeground,
+		0, winEventCallback, 0, 0, winEventOutOfContext|winEventSkipOwnProcess)
+	if hook == 0 {
+		return // the 700 ms tick still keeps the overlay on top, only slower
+	}
+	defer procUnhookWinEvent.Call(hook)
+
+	tid := windows.GetCurrentThreadId()
+	go func() {
+		<-ctx.Done()
+		procPostThreadMessageW.Call(uintptr(tid), wmQuit, 0, 0)
+	}()
+	for {
+		r, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&msg[0])), 0, 0, 0)
+		if int32(r) <= 0 { // WM_QUIT, or an error
+			return
+		}
+	}
 }
 
 func (t *topmostKeeper) stop() {

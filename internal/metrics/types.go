@@ -70,6 +70,19 @@ type FPSMetrics struct {
 	Low01   float64 `json:"low01"`   // 0.1% low, same
 	FrameMs float64 `json:"frameMs"` // slowest frame of the last moment, for the graph
 	Process string  `json:"process"`
+
+	// Exclusive is set while the process presents in true exclusive fullscreen,
+	// past the desktop compositor — the one mode no window can be drawn over,
+	// so the HUD is invisible in the game and the UI says why.
+	Exclusive bool `json:"exclusive,omitempty"`
+	// FSOOff says why Windows did not turn that exclusive fullscreen into its
+	// overlay-friendly flip mode, when the cause is a setting: "app" (the
+	// exe's own compatibility checkbox), "machine" (the same, for all users)
+	// or "global" (a registry tweak that disables it for every game).
+	FSOOff string `json:"fsoOff,omitempty"`
+	// Exe is the game's full path, carried only alongside FSOOff — it is the
+	// key RestoreFSO needs.
+	Exe string `json:"exe,omitempty"`
 }
 
 // DiskHealthView is one physical drive as shown in the storage panel: identity
@@ -158,9 +171,14 @@ type SourceStatus struct {
 	// temperature and power is installed. See README, "CPU temperature".
 	PawnIO        bool   `json:"pawnIo"`
 	PawnIOVersion string `json:"pawnIoVersion"`
-	// FPSOK reports whether PresentMon started; it needs elevation.
-	FPSOK    bool   `json:"fpsOk"`
+	// FPSOK reports whether PresentMon is streaming; it needs elevation.
+	FPSOK bool `json:"fpsOk"`
+	// FPSError is an i18n key (fps.err.*) explaining why it is not.
 	FPSError string `json:"fpsError"`
+	// FPSCanElevate is set when asking for administrator rights again could
+	// bring frame capture back — the UAC prompt was declined, or the elevated
+	// helper stopped.
+	FPSCanElevate bool `json:"fpsCanElevate"`
 }
 
 // StaticInfo describes the machine. Most of it is gathered once at startup;

@@ -96,8 +96,8 @@ for testing.
 - **Installer** (`open-monitoring-amd64-installer.exe`) — a per-user install
   under LocalAppData, Start-menu and desktop shortcuts, an uninstaller, and the
   required PawnIO driver as a component that is selected by default. The app
-  itself starts without an administrator prompt; Windows may ask once while
-  PawnIO is installed. When upgrading a machine-wide v0.6.0 installation, run
+  itself runs without administrator rights; Windows asks once while PawnIO is
+  installed, and frame capture asks for its own prompt at launch (see below). When upgrading a machine-wide v0.6.0 installation, run
   the new installer before removing the old version; it migrates settings and
   recorded sessions automatically.
 - **Portable** (`open-monitoring.exe`) — a single file, no prerequisites; the
@@ -107,9 +107,17 @@ Settings and recorded sessions live in a hidden `.open-monitoring` folder next
 to the executable. The installer only adds its shortcuts and per-user uninstall
 entry.
 
-Windows 10/11, 64-bit. Normal launches do not request administrator rights.
-Windows may restrict privileged SMART or ETW frame-capture metrics in that
-mode; the rest of the dashboard remains available.
+Windows 10/11, 64-bit. The app itself runs without administrator rights. FPS
+capture (PresentMon's ETW session) does need them, so at launch Windows shows
+one UAC prompt for a small helper copy of the app that runs PresentMon and
+exits with it. Decline it and everything except FPS keeps working; Settings
+offers to ask again. SMART pass-through also needs elevation.
+
+The HUD is a normal always-on-top window, so it shows over windowed, borderless
+and (with Windows' fullscreen optimizations) most "fullscreen" games. A game
+in true exclusive fullscreen bypasses the desktop and hides every overlay; the
+app detects that from PresentMon, says so, and can switch fullscreen
+optimizations back on when a setting had turned them off.
 
 ## The PawnIO driver
 

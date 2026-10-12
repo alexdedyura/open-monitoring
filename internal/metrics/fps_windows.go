@@ -4,6 +4,7 @@ package metrics
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"math"
 	"os"
@@ -25,21 +26,42 @@ import (
 // turns those ETW events into a CSV stream on stdout; this type keeps a window
 // of recent frame times per process and reports on the foreground one.
 //
-// The ETW trace session needs administrator rights. Without them PresentMon
-// fails to start and FPS metrics stay absent — everything else keeps working.
+// The ETW trace session needs administrator rights (or membership of
+// Performance Log Users). The app itself runs as invoker, so when PresentMon
+// is refused it is relaunched elevated behind a UAC prompt — see
+// fps_elevate_windows.go. Declining leaves FPS absent; everything else keeps
+// working.
 type FPSSource struct {
 	mu      sync.Mutex
-	frames  map[uint32][]frameTime // pid -> recent frames
+	frames  map[uint32][]frameTime // pid -> recent frames, of every swap chain
 	names   map[uint32]string      // pid -> process name
+	fso     map[uint32]fsoState    // pid -> fullscreen-optimisation check, once per process
 	cmd     *exec.Cmd
 	running bool
 	closed  bool
-	lastErr string // why PresentMon is not delivering, for Settings
+	lastErr string // i18n key: why PresentMon is not delivering, for Settings
+
+	// canElevate is set once PresentMon has been refused and the elevated
+	// attempt did not stick (declined, or the helper stopped): Settings then
+	// offers to ask again, which is what `retry` carries.
+	canElevate bool
+	retry      chan struct{}
+	done       chan struct{} // closed by Stop
 }
 
 type frameTime struct {
 	at time.Time
 	ms float64
+	// chain is the swap chain the frame was presented on. A process can own
+	// several — a game and its in-process launcher or UI layer, two windows, a
+	// chain recreated on a resolution change — and each reports its own
+	// MsBetweenPresents. Interleaved, a 144 fps game and a 60 fps UI chain
+	// average out to a frame rate neither of them has.
+	chain uint64
+	// legacy marks a present that bypassed the desktop compositor entirely
+	// ("Hardware: Legacy Flip" / "Legacy Copy to front buffer"): true exclusive
+	// fullscreen, which no window — the HUD included — can be drawn over.
+	legacy bool
 }
 
 // fpsWindow is how much history the averages and lows are computed over. A
@@ -87,6 +109,9 @@ func StartFPS() *FPSSource {
 	f := &FPSSource{
 		frames: map[uint32][]frameTime{},
 		names:  map[uint32]string{},
+		fso:    map[uint32]fsoState{},
+		retry:  make(chan struct{}, 1),
+		done:   make(chan struct{}),
 	}
 	go f.run()
 	return f
@@ -106,9 +131,26 @@ func (f *FPSSource) LastError() string {
 	return f.lastErr
 }
 
-func (f *FPSSource) setErr(msg string) {
+// CanElevate reports whether asking for administrator rights again could bring
+// frame capture back — Settings offers the button only then.
+func (f *FPSSource) CanElevate() bool {
 	f.mu.Lock()
-	f.lastErr = msg
+	defer f.mu.Unlock()
+	return f.canElevate && !f.running
+}
+
+// RequestElevation asks for the UAC prompt again after it was declined, or
+// after the elevated helper stopped. A no-op in any other state.
+func (f *FPSSource) RequestElevation() {
+	select {
+	case f.retry <- struct{}{}:
+	default:
+	}
+}
+
+func (f *FPSSource) setErr(key string) {
+	f.mu.Lock()
+	f.lastErr = key
 	f.mu.Unlock()
 }
 
@@ -134,38 +176,81 @@ func (f *FPSSource) Reset() {
 	}
 }
 
+// Stop ends capture. An elevated PresentMon cannot be killed from here — the
+// handle UAC hands back does not carry that right — so the elevated relay
+// watches this process instead and takes PresentMon down with it.
 func (f *FPSSource) Stop() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.closed = true
+	if !f.closed {
+		f.closed = true
+		if f.done != nil {
+			close(f.done)
+		}
+	}
 	if f.cmd != nil && f.cmd.Process != nil {
 		f.cmd.Process.Kill()
 	}
 }
 
+// streamResult is how one run of PresentMon ended.
+type streamResult int
+
+const (
+	streamOK     streamResult = iota // delivered frames, then exited
+	streamDenied                     // refused the ETW session: no rights
+	streamFailed                     // exited without delivering anything
+)
+
 func (f *FPSSource) run() {
 	path, err := sidecar.Path(sidecar.PresentMon)
 	if err != nil {
-		f.setErr("PresentMon is not bundled in this build")
+		f.setErr("fps.err.missing")
 		return
 	}
 
-	// The usual reason for failing to start is missing elevation, which will
-	// not change while the app runs — so retry a few times, then stop.
+	// A PresentMon that starts and then dies for some other reason is retried
+	// a few times; one that keeps dying is left alone.
 	const maxFailures = 3
 	failures := 0
 
 	for !f.stopped() {
-		if f.streamOnce(path) {
+		switch f.streamDirect(path) {
+		case streamOK:
 			failures = 0
-		} else if failures++; failures >= maxFailures {
-			f.setErr("PresentMon could not start — frame capture needs administrator rights")
+		case streamDenied:
+			// Neither elevated nor in Performance Log Users, and that does not
+			// change while the app runs: retrying as-is would be pointless.
+			if isElevated() {
+				f.setErr("fps.err.failed")
+				return
+			}
+			f.runElevated()
 			return
+		case streamFailed:
+			if failures++; failures >= maxFailures {
+				f.setErr("fps.err.failed")
+				return
+			}
 		}
-		if f.stopped() {
+		select {
+		case <-f.done:
 			return
+		case <-time.After(30 * time.Second):
 		}
-		time.Sleep(30 * time.Second)
+	}
+}
+
+// fpsSessionName names the ETW session, so that a session left behind by a
+// killed PresentMon is the one --stop_existing_session replaces next time.
+const fpsSessionName = "OpenMonitoring"
+
+// presentMonArgs is the command line every launch uses, direct or elevated.
+func presentMonArgs() []string {
+	return []string{
+		"--output_stdout",
+		"--stop_existing_session",
+		"--session_name", fpsSessionName,
 	}
 }
 
@@ -175,93 +260,131 @@ func (f *FPSSource) stopped() bool {
 	return f.closed
 }
 
-// streamOnce runs PresentMon until it exits, reporting whether it started.
-func (f *FPSSource) streamOnce(path string) bool {
-	cmd := exec.Command(path,
-		"--output_stdout",
-		"--stop_existing_session",
-		"--session_name", "OpenMonitoring")
+// streamDirect runs PresentMon as a child of this process until it exits.
+//
+// Starting is not the same as working: without rights PresentMon starts fine,
+// prints "access denied" and exits a moment later. That once counted as a
+// successful start, so the app relaunched it every thirty seconds for ever and
+// Settings never learned why there was no frame rate.
+func (f *FPSSource) streamDirect(path string) streamResult {
+	cmd := exec.Command(path, presentMonArgs()...)
 	hideWindow(cmd)
 
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return false
+		return streamFailed
 	}
 	if err := cmd.Start(); err != nil {
-		return false
+		return streamFailed
 	}
 
 	f.mu.Lock()
 	f.cmd, f.running, f.lastErr = cmd, true, ""
 	f.mu.Unlock()
 
-	f.consume(stdout)
+	rows := f.consume(stdout)
 	cmd.Wait()
+	f.streamEnded()
 
-	f.mu.Lock()
-	f.running = false
-	f.frames = map[uint32][]frameTime{} // stale the moment the stream stops
-	f.mu.Unlock()
-
-	return true
+	switch {
+	case rows > 0:
+		return streamOK
+	case strings.Contains(strings.ToLower(stderr.String()), "access denied"):
+		return streamDenied
+	default:
+		return streamFailed
+	}
 }
 
-// consume parses PresentMon's CSV stream. Column names and order differ
-// between PresentMon versions, so the header is resolved by name rather than
-// by position — and re-resolved whenever a new header appears mid-stream.
-func (f *FPSSource) consume(stdout io.Reader) {
+// streamEnded drops what the stream delivered, which is stale the moment the
+// stream stops.
+func (f *FPSSource) streamEnded() {
+	f.mu.Lock()
+	f.running = false
+	f.frames = map[uint32][]frameTime{}
+	f.mu.Unlock()
+}
+
+// consume parses PresentMon's CSV stream and reports how many frames it took.
+// Column names and order differ between PresentMon versions, so the header is
+// resolved by name rather than by position — and re-resolved whenever a new
+// header appears mid-stream.
+func (f *FPSSource) consume(stdout io.Reader) int {
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), 512*1024)
 
-	appCol, pidCol, msCol := -1, -1, -1
+	c := fpsCols{app: -1, pid: -1, ms: -1, chain: -1, mode: -1}
+	rows := 0
 
 	for sc.Scan() {
 		line := sc.Text()
 
-		if msCol < 0 || strings.HasPrefix(line, "Application") {
-			appCol, pidCol, msCol = parseFPSHeader(line)
+		if c.ms < 0 || strings.HasPrefix(line, "Application") {
+			c = parseFPSHeader(line)
 			continue
 		}
 
 		cols := strings.Split(line, ",")
-		if appCol >= len(cols) || pidCol >= len(cols) || msCol >= len(cols) {
+		if c.app >= len(cols) || c.pid >= len(cols) || c.ms >= len(cols) {
 			continue
 		}
-		pid, err := strconv.ParseUint(strings.TrimSpace(cols[pidCol]), 10, 32)
+		pid, err := strconv.ParseUint(strings.TrimSpace(cols[c.pid]), 10, 32)
 		if err != nil {
 			continue
 		}
-		ms, err := strconv.ParseFloat(strings.TrimSpace(cols[msCol]), 64)
+		ms, err := strconv.ParseFloat(strings.TrimSpace(cols[c.ms]), 64)
 		if err != nil || ms <= 0 || math.IsNaN(ms) || ms > maxFrameMs {
 			continue
 		}
+		fr := frameTime{at: time.Now(), ms: ms}
+		if c.chain >= 0 && c.chain < len(cols) {
+			// "0x000001F2A3B4C5D0"; base 0 reads the prefix. An unparsable
+			// address leaves 0, which only merges it with other such rows.
+			fr.chain, _ = strconv.ParseUint(strings.TrimSpace(cols[c.chain]), 0, 64)
+		}
+		if c.mode >= 0 && c.mode < len(cols) {
+			fr.legacy = strings.HasPrefix(strings.TrimSpace(cols[c.mode]), "Hardware: Legacy")
+		}
+		rows++
 
 		f.mu.Lock()
 		if _, seen := f.frames[uint32(pid)]; !seen {
-			f.names[uint32(pid)] = strings.TrimSuffix(strings.TrimSpace(cols[appCol]), ".exe")
+			f.names[uint32(pid)] = strings.TrimSuffix(strings.TrimSpace(cols[c.app]), ".exe")
 		}
-		f.frames[uint32(pid)] = append(f.frames[uint32(pid)], frameTime{at: time.Now(), ms: ms})
+		f.frames[uint32(pid)] = append(f.frames[uint32(pid)], fr)
 		f.mu.Unlock()
 	}
+	return rows
 }
 
-func parseFPSHeader(line string) (appCol, pidCol, msCol int) {
-	appCol, pidCol, msCol = -1, -1, -1
+// fpsCols is the CSV column of each field read, -1 where the header lacks it.
+type fpsCols struct {
+	app, pid, ms, chain, mode int
+}
+
+func parseFPSHeader(line string) fpsCols {
+	c := fpsCols{app: -1, pid: -1, ms: -1, chain: -1, mode: -1}
 	for i, name := range strings.Split(line, ",") {
 		switch strings.ToLower(strings.TrimSpace(name)) {
 		case "application":
-			appCol = i
+			c.app = i
 		case "processid":
-			pidCol = i
+			c.pid = i
+		case "swapchainaddress":
+			c.chain = i
+		case "presentmode":
+			c.mode = i
 		case "msbetweenpresents", "frametime", "msbetweendisplaychange":
 			// The first two are the real frame time; the third is a fallback
 			// only used when neither is present.
-			if msCol < 0 || !strings.EqualFold(strings.TrimSpace(name), "MsBetweenDisplayChange") {
-				msCol = i
+			if c.ms < 0 || !strings.EqualFold(strings.TrimSpace(name), "MsBetweenDisplayChange") {
+				c.ms = i
 			}
 		}
 	}
-	return appCol, pidCol, msCol
+	return c
 }
 
 // Metrics computes FPS statistics for the foreground process, falling back to
@@ -287,7 +410,7 @@ func (f *FPSSource) Metrics() *FPSMetrics {
 // metricsForLocked turns one process's buffered frame times into the numbers
 // the HUD shows.
 func (f *FPSSource) metricsForLocked(pid uint32, now time.Time) *FPSMetrics {
-	frames := f.frames[pid]
+	frames := mainChain(f.frames[pid])
 	if len(frames) == 0 {
 		return nil
 	}
@@ -311,6 +434,16 @@ func (f *FPSSource) metricsForLocked(pid uint32, now time.Time) *FPSMetrics {
 	}
 	m.Avg = round1(1000 / (sumAll / float64(len(all))))
 
+	if frames[len(frames)-1].legacy {
+		m.Exclusive = true
+		st, ok := f.fso[pid]
+		if !ok && f.fso != nil {
+			st = checkFSO(pid) // registry reads, once per process
+			f.fso[pid] = st
+		}
+		m.FSOOff, m.Exe = st.off, st.exe
+	}
+
 	sort.Float64s(all) // ascending, so the worst frames are at the end
 	if worst := meanTail(all, 0.01); worst > 0 && len(all) >= minFramesLow1 {
 		m.Low1 = round1(1000 / worst)
@@ -319,6 +452,47 @@ func (f *FPSSource) metricsForLocked(pid uint32, now time.Time) *FPSMetrics {
 		m.Low01 = round1(1000 / worst)
 	}
 	return m
+}
+
+// mainChain narrows a process's frames to the swap chain presenting the most
+// right now, which is the game rather than whatever else the process renders.
+// "Right now" matters: a chain recreated on a resolution change starts empty,
+// and counting over the whole minute would go on choosing the old one —
+// already stale, so reporting nothing — until it aged out.
+func mainChain(frames []frameTime) []frameTime {
+	if len(frames) == 0 {
+		return frames
+	}
+	mixed := false
+	for _, fr := range frames[1:] {
+		if fr.chain != frames[0].chain {
+			mixed = true
+			break
+		}
+	}
+	if !mixed {
+		return frames // the common case: one chain, nothing to copy
+	}
+
+	newest := frames[len(frames)-1].at
+	counts := map[uint64]int{}
+	for i := len(frames) - 1; i >= 0 && newest.Sub(frames[i].at) <= staleAfter; i-- {
+		counts[frames[i].chain]++
+	}
+	best, bestN := uint64(0), -1
+	for c, n := range counts {
+		if n > bestN || (n == bestN && c < best) { // map order is random; ties are not
+			best, bestN = c, n
+		}
+	}
+
+	out := make([]frameTime, 0, len(frames))
+	for _, fr := range frames {
+		if fr.chain == best {
+			out = append(out, fr)
+		}
+	}
+	return out
 }
 
 // freshLocked reports whether a process has presented recently enough to still
@@ -378,6 +552,7 @@ func (f *FPSSource) pruneLocked(now time.Time) {
 		if len(frames) == 0 {
 			delete(f.frames, pid)
 			delete(f.names, pid)
+			delete(f.fso, pid)
 			continue
 		}
 		f.frames[pid] = frames
@@ -398,12 +573,15 @@ func (f *FPSSource) pickProcessLocked(foreground, self uint32, now time.Time) ui
 	}
 
 	// The desktop compositor and shell always present; they are never the
-	// application the user is interested in.
+	// application the user is interested in. Nor is WebView2, which draws this
+	// app's own window: the HUD's graphs animate, so it presents sixty times a
+	// second for as long as the overlay is up.
 	const minFramesFallback = 30
 	best, bestPID := 0, uint32(0)
 	for pid, frames := range f.frames {
 		name := strings.ToLower(f.names[pid])
-		if pid == self || name == "dwm" || name == "explorer" || !f.freshLocked(pid, now) {
+		if pid == self || name == "dwm" || name == "explorer" || name == "msedgewebview2" ||
+			!f.freshLocked(pid, now) {
 			continue
 		}
 		if len(frames) > best && len(frames) >= minFramesFallback {

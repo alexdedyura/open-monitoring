@@ -14,6 +14,7 @@
   import Hud from './lib/Hud.svelte'
   import Logo from './lib/Logo.svelte'
   import PawnIoGate from './lib/PawnIoGate.svelte'
+  import ExclusiveNotice from './lib/ExclusiveNotice.svelte'
 
   let splashMinDone = $state(false)
   let hudAlert = $state(false)
@@ -175,6 +176,7 @@
     </header>
 
     <main class="min-h-0 flex-1 overflow-y-auto">
+      <ExclusiveNotice />
       {#if live.view === 'monitor'}
         <Dashboard />
       {:else if live.view === 'processes'}
